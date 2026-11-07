@@ -47,9 +47,12 @@ impl PieSeg {
     fn new(base: &str) -> PieSeg {
         PieSeg { base: base.to_string(), ..Default::default() }
     }
-    /// The segment in narrow IPA, e.g. `ɡʷʱ`, `ń̩`, `eː`.
+    /// The segment in narrow IPA with PIE's acute for the accent, e.g. `gʷʱ`, `ń̩`, `éː`.
     pub fn label(&self) -> String {
         let mut s = self.base.clone();
+        if self.accent {
+            s.push('\u{301}'); // PIE's own accent mark: é, ń̩
+        }
         if self.syllabic {
             s.push('\u{329}');
         }
@@ -62,7 +65,7 @@ impl PieSeg {
         if self.long {
             s.push('ː');
         }
-        if self.accent { format!("ˈ{s}") } else { s }
+        s
     }
     pub fn is_vowel(&self) -> bool {
         is_vowel(&self.base)
@@ -93,6 +96,9 @@ pub struct PieOptions {
     pub lab_str: f64,
     pub lab_carry: f64,
     pub lab_lead: f64,
+    /// a labialized consonant before a vowel releases through a [w] this long (s), taken from the
+    /// vowel; 0 = off
+    pub lab_glide: f64,
     /// voiceless stops: release lag (s) and glottal abduction
     pub vot: f64,
     pub asp_ab: f64,
@@ -130,6 +136,7 @@ impl Default for PieOptions {
             lab_str: 1.2,
             lab_carry: 0.03,
             lab_lead: 0.02,
+            lab_glide: 0.0,
             vot: 0.025,
             asp_ab: 0.28,
             mur_ab: 0.07,
@@ -381,6 +388,40 @@ fn engine_ipa(s: &PieSeg) -> &str {
 
 /// Plan one phrase. Segments without a duration get [`default_durations`].
 pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
+    if p.lab_glide <= 0.0 || !segs_in.iter().any(|s| s.labial) {
+        return plan_core(segs_in, question, o, p);
+    }
+    // a labialized consonant releases into its vowel through a rounded transition: plan it as a
+    // short [w] at the vowel's start (time taken from the vowel), then fold that span back into the
+    // consonant, so the plan has one segment per PIE segment
+    let defaults = default_durations(segs_in);
+    let mut segs: Vec<PieSeg> = Vec::with_capacity(segs_in.len() + 4);
+    let mut glides: Vec<usize> = Vec::new();
+    let mut take_next = 0.0;
+    for (i, s) in segs_in.iter().enumerate() {
+        let mut s2 = s.clone();
+        s2.dur = Some(s.dur.unwrap_or(defaults[i]) - take_next);
+        take_next = 0.0;
+        segs.push(s2);
+        if let Some(next) = segs_in.get(i + 1) {
+            if s.labial && !s.word_end && next.is_nucleus() {
+                let g = p.lab_glide.min(0.4 * next.dur.unwrap_or(defaults[i + 1]));
+                glides.push(segs.len());
+                segs.push(PieSeg { base: "w".into(), dur: Some(g), ..Default::default() });
+                take_next = g;
+            }
+        }
+    }
+    let mut plan = plan_core(&segs, question, o, p);
+    for &k in glides.iter().rev() {
+        let t1 = plan.segments[k].t1;
+        plan.segments[k - 1].t1 = t1;
+        plan.segments.remove(k);
+    }
+    plan
+}
+
+fn plan_core(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
     let n = segs_in.len();
     if n == 0 {
         return Plan { gestures: Vec::new(), segments: Vec::new(), end: o.t0 };
@@ -538,21 +579,21 @@ mod tests {
 
     #[test]
     fn reads_handbook_notation() {
-        assert_eq!(labels("*h₂éwsōs"), ["χ", "ˈe", "w", "s", "oː", "s"]);
-        assert_eq!(labels("*ǵʰéyōm"), ["ɟʱ", "ˈe", "j", "oː", "m"]);
-        assert_eq!(labels("gʷʰén-ti"), ["gʷʱ", "ˈe", "n", "t", "i"]);
-        assert_eq!(labels("h₃ékʷ"), ["ʁʷ", "ˈe", "kʷ"]);
-        assert_eq!(labels("ḱm̥tóm"), ["c", "m̩", "t", "ˈo", "m"]);
-        assert_eq!(labels("dʰugh₂tḗr"), ["dʱ", "u", "g", "χ", "t", "ˈeː", "r"]);
-        assert_eq!(labels("*léukā déiwos"), ["l", "ˈe", "w", "k", "aː", "d", "ˈe", "j", "w", "o", "s"]);
+        assert_eq!(labels("*h₂éwsōs"), ["χ", "é", "w", "s", "oː", "s"]);
+        assert_eq!(labels("*ǵʰéyōm"), ["ɟʱ", "é", "j", "oː", "m"]);
+        assert_eq!(labels("gʷʰén-ti"), ["gʷʱ", "é", "n", "t", "i"]);
+        assert_eq!(labels("h₃ékʷ"), ["ʁʷ", "é", "kʷ"]);
+        assert_eq!(labels("ḱm̥tóm"), ["c", "m̩", "t", "ó", "m"]);
+        assert_eq!(labels("dʰugh₂tḗr"), ["dʱ", "u", "g", "χ", "t", "éː", "r"]);
+        assert_eq!(labels("*léukā déiwos"), ["l", "é", "w", "k", "aː", "d", "é", "j", "w", "o", "s"]);
     }
 
     #[test]
     fn reads_corpus_ipa() {
-        assert_eq!(labels("χáw.sos"), ["χ", "ˈa", "w", "s", "o", "s"]);
-        assert_eq!(labels("ń̩dʱ.ɡʷʱi.tom"), ["ˈn̩", "dʱ", "gʷʱ", "i", "t", "o", "m"]);
-        assert_eq!(labels("ɣʷkʷbʱós"), ["ʁʷ", "kʷ", "bʱ", "ˈo", "s"]);
-        assert_eq!(labels("wih.róːs"), ["w", "i", "h", "r", "ˈoː", "s"]);
+        assert_eq!(labels("χáw.sos"), ["χ", "á", "w", "s", "o", "s"]);
+        assert_eq!(labels("ń̩dʱ.ɡʷʱi.tom"), ["ń̩", "dʱ", "gʷʱ", "i", "t", "o", "m"]);
+        assert_eq!(labels("ɣʷkʷbʱós"), ["ʁʷ", "kʷ", "bʱ", "ó", "s"]);
+        assert_eq!(labels("wih.róːs"), ["w", "i", "h", "r", "óː", "s"]);
     }
 
     #[test]
