@@ -140,6 +140,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--vtl", action="store_true")
     ap.add_argument("--extra", default="")
+    ap.add_argument("--wavdir", default="", help="score these WAVs (same names, on the VTL timeline) instead")
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
     out = DATA / "runs" / a.run
@@ -154,8 +155,11 @@ def main():
         u = utterances(f)
         uj = out / "wav" / f"{stem}.json"
         json.dump(u, open(uj, "w"), ensure_ascii=False)
-        wav = Path(f).with_suffix(".wav") if a.vtl else out / "wav" / f"{stem}.wav"
+        wav = Path(a.wavdir) / f"{stem}.wav" if a.wavdir else Path(f).with_suffix(".wav") if a.vtl else out / "wav" / f"{stem}.wav"
         jobs.append((stem, body, u, uj, wav))
+    if a.wavdir:
+        a.vtl = True
+        jobs = [j for j in jobs if j[4].exists()]
     if not a.vtl:
         def render(j):
             stem, body, u, uj, wav = j

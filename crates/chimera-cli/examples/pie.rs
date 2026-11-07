@@ -1,62 +1,159 @@
-//! PIE through CHIMERA: utterances with exact phone durations (from our VTL renders) plus the PIE
-//! features its IPA reader drops. `cargo run --release -p chimera-cli --example pie -- in.json out.wav male|female`
-//!   ʷ  lips rounded (as for /u/) through the stop and 30 ms into the next sound
-//!   ʱ  murmur: the folds part slightly at the release, 40 ms into the vowel, pitch 2 st lower
-//!   voiceless stops unaspirated (the planner aspirates them English-style)
-//!   accented syllabic resonants get the accent's pitch
+//! PIE through CHIMERA: utterances with exact phone durations (from pie_vtl renders) plus the PIE
+//! features the IPA reader drops.
+//!   cargo run --release -p chimera-cli --example pie -- in.json out.wav male|female [key=value ...]
+//!
+//! What it adds to the planner's English-tuned score:
+//!   ʷ  lips rounded through the stop and into the next sound
+//!   ʱ  murmur: the folds part slightly at the release, a short way into the vowel, pitch a little lower
+//!   voiceless stops with a short-lag release (the planner aspirates them English-style)
+//!   the pitch accent, also on accented syllabic resonants
+//! Options (key=value), all with tuned defaults (see DEFAULTS):
+//!   map:X=Y            render segment X as Y (e.g. map:e=ɛ)
+//!   ov:L:key=v         set articulator/source `key` to v in the planner's gestures labelled L
+//!   dv:L:key=d         add d to `key` in the planner's gestures labelled L that set it
+//!   lab_ap lab_prot lab_str lab_carry lab_lead   the labiovelar rounding
+//!   vot asp_ab          voiceless stops: release lag (s) and abduction
+//!   mur_ab mur_dur mur_dip   murmur abduction, its length after the release (s), pitch dip (fraction)
+//!   src:F=v            voice source field F (breathiness tension brightness roughness drift pressure)
+//!   f0                  base pitch (Hz; 0 = the body's default)
+//!   accent              pitch excursion of accented syllables (fraction of the base)
 use chimera::anatomy::human::{ArticKey, BODY_FEMALE, BODY_MALE};
 use chimera::control::score::{ControlKey, Gesture, Targets};
 use chimera::phonetics::Segment;
 use chimera::phonetics::planner::{PlanOptions, plan_utterance};
 use chimera::voice::human_voice::{HumanVoice, SourcePatch};
 use serde_json::Value;
+use std::collections::HashMap;
 
 const FS: f64 = 48000.0;
 const LEAD: f64 = 0.06; // the planner's breath-onset lead before the first segment
+
+const DEFAULTS: &[(&str, &str)] = &[
+    ("accent", "0.2"),
+    ("lab_ap", "0.3"),
+    ("lab_prot", "1.4"),
+    ("lab_str", "3.0"),
+    ("lab_carry", "0.03"),
+    ("lab_lead", "0.02"),
+    ("vot", "0.012"),
+    ("asp_ab", "0.22"),
+    ("mur_ab", "0.12"),
+    ("mur_dur", "0.04"),
+    ("mur_dip", "0.11"),
+    ("f0", "0"),
+];
+
+fn key(name: &str) -> ControlKey {
+    match name {
+        "abduction" => ControlKey::ABDUCTION,
+        "closure" => ControlKey::CLOSURE,
+        "breath" => ControlKey::BREATH,
+        "f0" => ControlKey::F0,
+        _ => ControlKey::Artic(ArticKey::from_name(name).unwrap_or_else(|| panic!("unknown key {name}"))),
+    }
+}
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let src: Value = serde_json::from_str(&std::fs::read_to_string(&a[1]).unwrap()).unwrap();
     let out = &a[2];
     let body_name = a.get(3).map_or("male", |s| s.as_str());
-    let accent: f64 = a.get(4).map_or(0.2, |s| s.parse().unwrap());
-    let (body, f0) = if body_name == "female" { (BODY_FEMALE, 200.0) } else { (BODY_MALE, 110.0) };
+    let mut opt: HashMap<String, String> = DEFAULTS.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    let mut remap: HashMap<String, String> = HashMap::new();
+    let mut overrides: Vec<(String, ControlKey, f64)> = Vec::new();
+    let mut deltas: Vec<(String, ControlKey, f64)> = Vec::new();
+    let mut src_patch = SourcePatch::default();
+    for kv in a.iter().skip(4) {
+        let (k, v) = kv.split_once('=').unwrap_or_else(|| panic!("option {kv:?} is not key=value"));
+        if let Some(x) = k.strip_prefix("map:") {
+            remap.insert(x.to_string(), v.to_string());
+        } else if let Some(x) = k.strip_prefix("src:") {
+            let v: f64 = v.parse().unwrap();
+            match x {
+                "breathiness" => src_patch.breathiness = Some(v),
+                "tension" => src_patch.tension = Some(v),
+                "brightness" => src_patch.brightness = Some(v),
+                "roughness" => src_patch.roughness = Some(v),
+                "drift" => src_patch.drift = Some(v),
+                "pressure" => src_patch.pressure = Some(v),
+                _ => panic!("unknown source field {x}"),
+            }
+        } else if let Some(x) = k.strip_prefix("dv:") {
+            let (label, name) = x.split_once(':').unwrap();
+            deltas.push((label.to_string(), key(name), v.parse().unwrap()));
+        } else if let Some(x) = k.strip_prefix("ov:") {
+            let (label, name) = x.split_once(':').unwrap();
+            overrides.push((label.to_string(), key(name), v.parse().unwrap()));
+        } else {
+            assert!(opt.contains_key(k), "unknown option {k}");
+            opt.insert(k.to_string(), v.to_string());
+        }
+    }
+    let f = |k: &str| -> f64 { opt[k].parse().unwrap() };
+    let accent = f("accent");
+    let (body, mut f0) = if body_name == "female" { (BODY_FEMALE, 200.0) } else { (BODY_MALE, 110.0) };
+    if f("f0") > 0.0 {
+        f0 = f("f0");
+    }
     chimera::init();
     let mut voice = HumanVoice::new(FS, body, 2);
-    voice.set_source(&SourcePatch::f0(f0));
+    src_patch.f0 = Some(f0);
+    voice.set_source(&src_patch);
     let mut end = 0.0f64;
     for u in src["utterances"].as_array().unwrap() {
         let segs_j = u["segs"].as_array().unwrap();
         let start = u["start"].as_f64().unwrap() + 0.3; // 0.3 s of room for the first breath
         let segs: Vec<Segment> = segs_j
             .iter()
-            .map(|s| Segment {
-                ipa: s["ipa"].as_str().unwrap().to_string(),
-                dur: s["dur"].as_f64(),
-                stress: Some(s["stress"].as_u64().unwrap() as u8),
-                f0: None,
-                word_end: Some(s["word_end"].as_bool().unwrap()),
+            .map(|s| {
+                let ipa = s["ipa"].as_str().unwrap();
+                Segment {
+                    ipa: remap.get(ipa).cloned().unwrap_or_else(|| ipa.to_string()),
+                    dur: s["dur"].as_f64(),
+                    stress: Some(s["stress"].as_u64().unwrap() as u8),
+                    f0: None,
+                    word_end: Some(s["word_end"].as_bool().unwrap()),
+                }
             })
             .collect();
         let mut plan = plan_utterance(&segs, &PlanOptions { body: body_name.into(), t0: start - LEAD, f0: Some(f0), accent: Some(accent), ..Default::default() });
-        // PIE voiceless stops are plain: the English aspiration gesture becomes the unaspirated one
+        // PIE voiceless stops are plain: the English aspiration gesture becomes a short-lag one
+        let vot = f("vot");
         for g in plan.gestures.iter_mut() {
             if g.label_str() == "aspiration" {
-                g.targets = Targets::default().with(ControlKey::ABDUCTION, 0.22);
-                g.t1 -= 0.015;
-                g.ramp_out = 0.02;
+                let was_aspirated = g.targets.get(ControlKey::ABDUCTION).unwrap_or(0.0) > 0.3;
+                g.targets = Targets::default().with(ControlKey::ABDUCTION, f("asp_ab"));
+                if was_aspirated {
+                    g.t1 -= (0.05 - vot) * 0.4;
+                    g.ramp_out = 0.02;
+                } else {
+                    g.t1 += (vot - 0.012) * 0.4;
+                }
+            }
+            for (label, k, d) in &deltas {
+                if g.label_str() == label {
+                    if let Some(x) = g.targets.get(*k) {
+                        g.targets.set(*k, x + d);
+                    }
+                }
+            }
+            for (label, k, v) in &overrides {
+                if g.label_str() == label && (g.targets.has(*k) || g.strength >= 40.0) {
+                    g.targets.set(*k, *v);
+                }
             }
         }
         let ps = plan.segments.clone();
         for (i, s) in segs_j.iter().enumerate() {
             let (t0, t1) = (ps[i].t0, ps[i].t1);
             if s["labial"].as_bool().unwrap() {
-                let tg = Targets::default().with(ArticKey::LipAp, 0.3).with(ArticKey::LipProt, 1.4).with(ArticKey::LipWidth, 0.065);
-                plan.gestures.push(Gesture::new(t0 - 0.02, t1 + 0.03, 0.03, 0.03, 3.0, tg).label("labial"));
+                let tg = Targets::default().with(ArticKey::LipAp, f("lab_ap")).with(ArticKey::LipProt, f("lab_prot")).with(ArticKey::LipWidth, 0.065);
+                plan.gestures.push(Gesture::new(t0 - f("lab_lead"), t1 + f("lab_carry"), 0.03, 0.03, f("lab_str"), tg).label("labial"));
             }
             if s["breathy"].as_bool().unwrap() {
-                plan.gestures.push(Gesture::new(t1 - 0.01, t1 + 0.04, 0.015, 0.03, 6.0, Targets::default().with(ControlKey::ABDUCTION, 0.12)).label("murmur"));
-                plan.gestures.push(Gesture::new(t1, t1 + 0.035, 0.02, 0.03, 4.0, Targets::default().with(ControlKey::F0, f0 * 0.89)).label("murmur pitch"));
+                let d = f("mur_dur");
+                plan.gestures.push(Gesture::new(t1 - 0.01, t1 + d, 0.015, 0.03, 6.0, Targets::default().with(ControlKey::ABDUCTION, f("mur_ab"))).label("murmur"));
+                plan.gestures.push(Gesture::new(t1, t1 + d * 0.9, 0.02, 0.03, 4.0, Targets::default().with(ControlKey::F0, f0 * (1.0 - f("mur_dip")))).label("murmur pitch"));
             }
             if s["syllabic"].as_bool().unwrap() && s["accent"].as_bool().unwrap() {
                 plan.gestures.push(Gesture::new(t0, t1, 0.05, 0.05, 1.5, Targets::default().with(ControlKey::F0, f0 * (1.0 + accent))).label("pitch"));
@@ -85,10 +182,8 @@ fn main() {
     w.extend_from_slice(&32u16.to_le_bytes());
     w.extend_from_slice(b"data");
     w.extend_from_slice(&data.to_le_bytes());
-    let pk = buf.iter().fold(0f32, |m, x| m.max(x.abs()));
     for x in &buf {
         w.extend_from_slice(&(if x.is_finite() { *x } else { 0.0 }).to_le_bytes());
     }
     std::fs::write(out, w).unwrap();
-    println!("wrote {out}  {:.2} s  peak {pk:.3}", n as f64 / FS);
 }
