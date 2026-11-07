@@ -41,7 +41,7 @@ fn main() {
             let (mi, ma) = all.iter().enumerate().filter(|(_, a)| **a > 0.0).fold((0, f64::INFINITY), |m, (i, a)| if *a < m.1 { (i, *a) } else { m });
             println!("t={:.3} narrowest #{mi}/{} (pharynx {}) area {ma:.3} cm²  glottis area {:.3}", t, all.len(), air.n_ph, v.glottis.area);
             for s in air.net.noise_sources() {
-                println!("   noise src {} gain {:.1e} level {:.3e}", s.src, s.gain, s.level);
+                println!("   noise src {} gain {:.1e} level {:.3e} Re {:.0}", s.src, s.gain, s.level, s.re);
             }
             ti += 1;
         }

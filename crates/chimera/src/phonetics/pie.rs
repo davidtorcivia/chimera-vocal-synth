@@ -144,6 +144,10 @@ pub struct PieOptions {
     /// gain of the dorsal obstacle noise source (the voice's `airway.noise_gain.dorsal`; see
     /// [`setup_voice`]): what makes [χ] a loud uvular fricative rather than an [h]
     pub dorsal_noise: f64,
+    /// upper band edge (Hz) of the sibilant (teeth) noise source; the engine's default is 5000
+    pub sibilant_lowpass: f64,
+    /// Reynolds threshold of the dorsal source (the engine's general one is 1800)
+    pub dorsal_re: f64,
     /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
     pub syl_r_trill: u32,
     /// pause between phrases (s)
@@ -177,16 +181,18 @@ impl Default for PieOptions {
             i_jaw: -0.1,
             e_raise: -0.1,
             j_raise: 0.08,
-            w_lip_ap: 0.16,
+            w_lip_ap: 0.1,
             w_lip_prot: 1.5,
             w_tb_x: 2.1,
-            w_tb_y: -0.3,
+            w_tb_y: -0.15,
             glide_lip_ap: 0.12,
             chi_raise: 0.0,
             chi_abd: 0.3,
             gh_raise: 0.0,
-            syl_r_trill: 0,
-            dorsal_noise: 3.0e-5,
+            syl_r_trill: 2,
+            dorsal_noise: 6.0e-5,
+            sibilant_lowpass: 9000.0,
+            dorsal_re: 4500.0,
             pause: 0.3,
         }
     }
@@ -649,6 +655,8 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     use crate::voice::human_voice::SourcePatch;
     v.set_source(&SourcePatch { f0: Some(f0), breathiness: Some(0.05), tension: Some(0.4), ..Default::default() });
     v.airway.noise_gain.dorsal = p.dorsal_noise;
+    v.airway.noise_gain.teeth_lowpass = p.sibilant_lowpass;
+    v.airway.noise_gain.dorsal_re = p.dorsal_re;
 }
 
 /// Plan PIE text (see [`parse_pie`]), phrase after phrase from `o.t0`.

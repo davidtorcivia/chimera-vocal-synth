@@ -17,6 +17,11 @@ pub struct NoiseGains {
     /// a dorsal jet (velar, uvular) striking the soft palate, uvula and pharyngeal wall: the obstacle
     /// source of the back fricatives [x χ ʁ], as the teeth are for the sibilants
     pub dorsal: f64,
+    /// upper band edge (Hz) of the teeth (sibilant) source
+    pub teeth_lowpass: f64,
+    /// Reynolds number above which the dorsal obstacle source sounds: it needs the fast jet of a
+    /// voiceless fricative, not the slower flow of a voiced glide through the same narrowing
+    pub dorsal_re: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -142,7 +147,7 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -327,7 +332,7 @@ impl HumanAirway {
                         let off2 = js_max(1.0, js_round((1.6 * self.body.scale) / dx)) as isize;
                         let db = to_branch((n_tot - 2).min(min_i + off2));
                         if db >= 0 {
-                            list.push(NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(900.0, 300.0));
+                            list.push(NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(900.0, 300.0).re_crit(g.dorsal_re));
                         }
                     }
                 }
@@ -335,7 +340,7 @@ impl HumanAirway {
                     let teeth_i = n_ph_i + js_min((n_or - 2) as f64, js_max(0.0, js_round((f.teeth_s - self.ph_len) / dx_or))) as isize;
                     let tb = to_branch(teeth_i);
                     if tb >= 0 {
-                        list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt).band(5000.0, 1200.0));
+                        list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt).band(g.teeth_lowpass, 1200.0));
                     }
                 }
             }

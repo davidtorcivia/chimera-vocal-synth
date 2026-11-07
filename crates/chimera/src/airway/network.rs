@@ -172,11 +172,18 @@ pub struct NoiseSpec {
     pub gain: f64,
     pub lowpass_hz: f64,
     pub highpass_hz: f64,
+    /// Reynolds number above which the source sounds (RE_CRIT unless set: an obstacle source needs
+    /// a faster, developed jet)
+    pub re_crit: f64,
 }
 
 impl NoiseSpec {
     pub fn new(src: usize, fwd: usize, bwd: usize, gain: f64) -> Self {
-        NoiseSpec { src, fwd, bwd, gain, lowpass_hz: 7000.0, highpass_hz: 400.0 }
+        NoiseSpec { src, fwd, bwd, gain, lowpass_hz: 7000.0, highpass_hz: 400.0, re_crit: RE_CRIT }
+    }
+    pub fn re_crit(mut self, re: f64) -> Self {
+        self.re_crit = re;
+        self
     }
     pub fn band(mut self, lowpass_hz: f64, highpass_hz: f64) -> Self {
         self.lowpass_hz = lowpass_hz;
@@ -199,6 +206,9 @@ pub struct NoiseSource {
     hp_coef: f64,
     /// last amplitude (telemetry)
     pub level: f64,
+    /// last Reynolds number at the source branch (telemetry)
+    pub re: f64,
+    re_crit: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -739,6 +749,8 @@ impl AirwayNetwork {
                 lp_coef: 1.0 - exp((-2.0 * PI * s.lowpass_hz) / self.fs),
                 hp_coef: exp((-2.0 * PI * s.highpass_hz) / self.fs),
                 level: 0.0,
+                re: 0.0,
+                re_crit: s.re_crit,
             });
         }
         core::mem::swap(&mut self.noise, &mut self.noise_next);
@@ -1097,17 +1109,19 @@ impl AirwayNetwork {
     fn compute_noise(&mut self) {
         // white noise power per Hz scales with fs: normalise to a 96 kHz reference
         let scale = self.noise_scale * sqrt(96000.0 / self.fs);
-        let sat = 12000.0 * 12000.0 - RE_CRIT * RE_CRIT;
         for i in 0..self.noise.len() {
             let s = &mut self.noise[i];
             let a = self.branch_area[s.src];
             let u = self.u[s.src];
             let mut amp = 0.0;
+            let rc = s.re_crit;
+            let sat = 12000.0 * 12000.0 - rc * rc;
             if a > self.closed_area {
                 // Re = v·d_h/ν with d_h = 2√(A/π) → Re = |U|·2/(ν·√(πA))
                 let re = (u.abs() * 2.0) / (NU * sqrt(PI * a));
-                if re > RE_CRIT {
-                    let x = re * re - RE_CRIT * RE_CRIT;
+                s.re = re;
+                if re > rc {
+                    let x = re * re - rc * rc;
                     amp = (s.gain * scale * x) / (1.0 + x / sat); // bounded growth at very high Re
                 }
             }
