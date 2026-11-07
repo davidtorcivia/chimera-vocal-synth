@@ -14,6 +14,9 @@ pub struct NoiseGains {
     pub glottis: f64,
     pub constriction: f64,
     pub teeth: f64,
+    /// a dorsal jet (velar, uvular) striking the soft palate, uvula and pharyngeal wall: the obstacle
+    /// source of the back fricatives [x χ ʁ], as the teeth are for the sibilants
+    pub dorsal: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -139,7 +142,7 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -289,11 +292,14 @@ impl HumanAirway {
             let n_tot = (n_ph + n_or) as isize;
             let dx_ph = self.ph_len / n_ph as f64;
             let dx_or = self.or_len / n_or as f64;
+            // gi == n_ph is the pharynx/mouth junction, which has no branch of its own: a position that
+            // lands on it moves to the nearer side's end (it used to drop the source, which silenced
+            // the frication of any constriction just past the junction: the uvular [χ ʁ])
             let to_branch = |gi: isize| -> isize {
                 if gi < n_ph_i {
                     self.branch_of(self.pharynx, gi) as isize
                 } else if gi == n_ph_i {
-                    -1
+                    self.branch_of(self.pharynx, n_ph_i - 1) as isize
                 } else {
                     self.branch_of(self.oral, gi - n_ph_i) as isize
                 }
@@ -311,6 +317,20 @@ impl HumanAirway {
                 let w_dist = smooth(0.15, 0.5, behind) * (1.0 - smooth(2.6, 4.0, behind));
                 let w_jet = 1.0 - smooth(0.2 * k2, 0.5 * k2, min_a);
                 let wt = w_dist * w_jet;
+                // dorsal obstacle source: a narrow jet well behind the teeth (velar/uvular place)
+                // meets the velum, uvula and the pharyngeal wall just downstream
+                if g.dorsal > 0.0 {
+                    let w_back = smooth(3.5, 5.0, behind);
+                    let w_narrow = 1.0 - smooth(0.25 * k2, 0.6 * k2, min_a);
+                    let wd = w_back * w_narrow;
+                    if wd > 1e-3 {
+                        let off2 = js_max(1.0, js_round((1.6 * self.body.scale) / dx)) as isize;
+                        let db = to_branch((n_tot - 2).min(min_i + off2));
+                        if db >= 0 {
+                            list.push(NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(900.0, 300.0));
+                        }
+                    }
+                }
                 if wt > 1e-3 {
                     let teeth_i = n_ph_i + js_min((n_or - 2) as f64, js_max(0.0, js_round((f.teeth_s - self.ph_len) / dx_or))) as isize;
                     let tb = to_branch(teeth_i);

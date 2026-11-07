@@ -106,6 +106,8 @@ pub struct PieOptions {
     pub mur_ab: f64,
     pub mur_dur: f64,
     pub mur_dip: f64,
+    /// murmur source channel level (0..1): breathy voicing that keeps the folds vibrating
+    pub mur_level: f64,
     /// voiced stops: larynx height during the closure (cm, lower = voicing lasts), and strength;
     /// `None` leaves the larynx to the vowels
     pub vstop_larynx: Option<f64>,
@@ -128,8 +130,22 @@ pub struct PieOptions {
     pub w_lip_ap: f64,
     pub w_lip_prot: f64,
     pub w_tb_x: f64,
+    /// a real /w/: tongue body height change (cm); the back of the tongue must stay clear of the
+    /// soft palate (an approximant, ~0.3 cm² or more), or it hisses
+    pub w_tb_y: f64,
     /// the [w] release of a labiovelar: lip aperture (cm)
     pub glide_lip_ap: f64,
+    /// h₂ [χ]: tongue body height change at the uvula (cm, + narrower) and the glottal opening
+    /// during it (the planner's 0.3 for any voiceless fricative makes it mostly breath, an [h])
+    pub chi_raise: f64,
+    pub chi_abd: f64,
+    /// h₃ [ʁʷ]: tongue body height change (cm, + narrower: more frication)
+    pub gh_raise: f64,
+    /// gain of the dorsal obstacle noise source (the voice's `airway.noise_gain.dorsal`; see
+    /// [`setup_voice`]): what makes [χ] a loud uvular fricative rather than an [h]
+    pub dorsal_noise: f64,
+    /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
+    pub syl_r_trill: u32,
     /// pause between phrases (s)
     pub pause: f64,
 }
@@ -146,9 +162,10 @@ impl Default for PieOptions {
             lab_glide: 0.03,
             vot: 0.03,
             asp_ab: 0.28,
-            mur_ab: 0.07,
-            mur_dur: 0.04,
+            mur_ab: 0.0,
+            mur_dur: 0.06,
             mur_dip: 0.11,
+            mur_level: 0.7,
             vstop_larynx: Some(-0.5),
             vstop_str: 3.0,
             trill_n: 3,
@@ -163,7 +180,13 @@ impl Default for PieOptions {
             w_lip_ap: 0.16,
             w_lip_prot: 1.5,
             w_tb_x: 2.1,
+            w_tb_y: -0.3,
             glide_lip_ap: 0.12,
+            chi_raise: 0.0,
+            chi_abd: 0.3,
+            gh_raise: 0.0,
+            syl_r_trill: 0,
+            dorsal_noise: 3.0e-5,
             pause: 0.3,
         }
     }
@@ -389,8 +412,9 @@ fn is_trill(s: &PieSeg) -> bool {
 }
 
 /// The engine segment the planner sees for a PIE segment.
-fn engine_ipa(s: &PieSeg) -> &str {
+fn engine_ipa<'a>(s: &'a PieSeg, p: &PieOptions) -> &'a str {
     match s.base.as_str() {
+        "r" if s.syllabic && p.syl_r_trill > 0 => "ə",
         "r" if s.syllabic => "ɹ",
         "r" => "ɾ",
         b => b,
@@ -471,7 +495,7 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
         .iter()
         .zip(&durs)
         .map(|(s, d)| Segment {
-            ipa: engine_ipa(s).to_string(),
+            ipa: engine_ipa(s, p).to_string(),
             dur: Some(*d),
             stress: Some(if s.is_vowel() && s.accent { 1 } else { 0 }),
             f0: None,
@@ -524,6 +548,9 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                         g.targets.set(ArticKey::LipAp, p.w_lip_ap);
                         g.targets.set(ArticKey::LipProt, p.w_lip_prot);
                         g.targets.set(ArticKey::TbX, p.w_tb_x);
+                        if let Some(y) = g.targets.get(ArticKey::TbY) {
+                            g.targets.set(ArticKey::TbY, y + p.w_tb_y);
+                        }
                     }
                 }
             }
@@ -531,6 +558,41 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
         }
     }
     let ps = plan.segments.clone();
+    // h₂ and h₃: the uvular constriction and, for χ, how open the glottis is
+    for (i, s) in segs_in.iter().enumerate() {
+        let (a, b) = (ps[i].t0, ps[i].t1);
+        let over = |g: &Gesture| g.t1 > a - 0.02 && g.t0 < b + 0.02;
+        if s.base == "χ" {
+            for g in plan.gestures.iter_mut().filter(|g| over(g)) {
+                if g.label_str() == "voiceless" {
+                    g.targets.set(ControlKey::ABDUCTION, p.chi_abd);
+                } else if g.label_str() == "χ" && g.strength >= 40.0 {
+                    if let Some(y) = g.targets.get(ArticKey::TbY) {
+                        g.targets.set(ArticKey::TbY, y + p.chi_raise);
+                    }
+                }
+            }
+        } else if s.base == "ʁ" && p.gh_raise != 0.0 {
+            for g in plan.gestures.iter_mut().filter(|g| over(g) && g.label_str() == "ʁ" && g.strength >= 40.0) {
+                if let Some(y) = g.targets.get(ArticKey::TbY) {
+                    g.targets.set(ArticKey::TbY, y + p.gh_raise);
+                }
+            }
+        }
+        // syllabic r̥ as a vocoid with tip contacts across its middle
+        if s.base == "r" && s.syllabic && p.syl_r_trill > 0 {
+            let k_n = p.syl_r_trill as usize;
+            let (c_a, c_b) = (a + 0.2 * (b - a), a + 0.8 * (b - a));
+            let per = (c_b - c_a) / k_n as f64;
+            for k in 0..k_n {
+                let c0 = c_a + k as f64 * per;
+                let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, 9.7);
+                let open = Targets::default().with(ArticKey::TtX, 6.1).with(ArticKey::TtY, p.trill_open_y);
+                plan.gestures.push(Gesture::new(c0 - 0.006, c0 + p.trill_close * per, 0.004, 0.004, 40.0, close).speed(p.trill_speed).label("r"));
+                plan.gestures.push(Gesture::new(c0 + p.trill_close * per, c0 + per - 0.006, 0.004, 0.004, 40.0, open).speed(p.trill_speed).label("r"));
+            }
+        }
+    }
     // the trill: explicit contacts replace the tap's gestures
     if p.trill_n > 0 {
         let spans: Vec<(f64, f64)> = (0..n).filter(|&i| is_trill(&segs_in[i])).map(|i| (ps[i].t0, ps[i].t1)).collect();
@@ -563,7 +625,11 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             }
         }
         if s.breathy {
-            plan.gestures.push(Gesture::new(t1 - 0.01, t1 + p.mur_dur, 0.015, 0.03, 6.0, Targets::default().with(ControlKey::ABDUCTION, p.mur_ab)).label("ʱ"));
+            let mut tg = Targets::default().with(ControlKey::ABDUCTION, p.mur_ab);
+            if p.mur_level > 0.0 {
+                tg.set(ControlKey::MURMUR, p.mur_level);
+            }
+            plan.gestures.push(Gesture::new(t1 - 0.01, t1 + p.mur_dur, 0.015, 0.03, 6.0, tg).label("ʱ"));
             plan.gestures.push(Gesture::new(t1, t1 + p.mur_dur * 0.9, 0.02, 0.03, 4.0, Targets::default().with(ControlKey::F0, f0 * (1.0 - p.mur_dip))).label("pitch"));
         }
         if s.syllabic && s.accent {
@@ -575,6 +641,14 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
         ps.ipa = s.label();
     }
     plan
+}
+
+/// Set a voice up for PIE: the source the defaults were tuned with (a clean, slightly lax voice)
+/// and the dorsal frication source. Call before scheduling a PIE plan.
+pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &PieOptions) {
+    use crate::voice::human_voice::SourcePatch;
+    v.set_source(&SourcePatch { f0: Some(f0), breathiness: Some(0.05), tension: Some(0.4), ..Default::default() });
+    v.airway.noise_gain.dorsal = p.dorsal_noise;
 }
 
 /// Plan PIE text (see [`parse_pie`]), phrase after phrase from `o.t0`.

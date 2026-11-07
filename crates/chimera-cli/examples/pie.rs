@@ -126,6 +126,7 @@ fn main() {
     voice.airway.noise_gain.glottis *= ng[0];
     voice.airway.noise_gain.constriction *= ng[1];
     voice.airway.noise_gain.teeth *= ng[2];
+    voice.airway.noise_gain.dorsal = p.dorsal_noise;
     let mut end = 0.0f64;
     for u in src["utterances"].as_array().unwrap() {
         let start = u["start"].as_f64().unwrap() + 0.3; // 0.3 s of room for the first breath

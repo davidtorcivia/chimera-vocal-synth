@@ -136,9 +136,30 @@ pub fn pie(ctx: &Ctx, a: &[String]) -> Result<(), String> {
         _ => 110.0,
     };
     let mut voice = HumanVoice::new(FS, b, 2);
-    // a clean, slightly lax source: the settings the PIE defaults were tuned with
-    voice.set_source(&SourcePatch { f0: Some(f0), breathiness: Some(0.05), tension: Some(0.4), ..Default::default() });
-    let plan = plan_pie(text, &PlanOptions { body: body_name.into(), t0: 0.05, f0: Some(f0), ..Default::default() }, &PieOptions::default());
+    // further arguments: PieOptions fields as key=value (snake_case or camelCase), e.g. mur_ab=0.12
+    let mut opts = serde_json::to_value(PieOptions::default()).map_err(|e| e.to_string())?;
+    for kv in a.iter().skip(3) {
+        let (k, v) = kv.split_once('=').ok_or_else(|| format!("option {kv:?} is not key=value"))?;
+        let mut camel = String::new();
+        let mut up = false;
+        for c in k.chars() {
+            if c == '_' {
+                up = true;
+            } else if up {
+                camel.extend(c.to_uppercase());
+                up = false;
+            } else {
+                camel.push(c);
+            }
+        }
+        if opts.get(&camel).is_none() {
+            return Err(format!("unknown PIE option {k}"));
+        }
+        opts[&camel] = if v == "none" { serde_json::Value::Null } else { serde_json::from_str(v).map_err(|_| format!("bad value {kv}"))? };
+    }
+    let opts: PieOptions = serde_json::from_value(opts).map_err(|e| e.to_string())?;
+    chimera::phonetics::pie::setup_voice(&mut voice, f0, &opts);
+    let plan = plan_pie(text, &PlanOptions { body: body_name.into(), t0: 0.05, f0: Some(f0), ..Default::default() }, &opts);
     if plan.segments.is_empty() {
         return Err(format!("no PIE in {text:?}"));
     }

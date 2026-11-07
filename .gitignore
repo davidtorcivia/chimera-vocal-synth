@@ -9,3 +9,5 @@ src/wasm/chimera.wasm
 # duet shows (?show=<id>) are made locally and are never published: often covers of songs we have no rights to
 public/shows/
 /target-next
+__pycache__/
+/package-lock.json

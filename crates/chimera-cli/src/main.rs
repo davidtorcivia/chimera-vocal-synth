@@ -18,7 +18,7 @@ usage: chimera <command> [args] [--float]
 
   render speech  <out> [\"ipa / ipa\"] [male|female|child]
   render text    <out> [\"English text.\"] [male|female|child]
-  render pie     <out> [\"PIE text\"] [male|female|child]
+  render pie     <out> [\"PIE text\"] [male|female|child] [option=value ...]
                  (handbook notation *h₂éwsōs or narrow IPA χáw.sos; ‖ , ? break phrases)
   render song    [outdir] [male|female|child]
   render notes   <in.json> <out> [male|female|child] [--artic tracks.json] [--tele voice.tele]

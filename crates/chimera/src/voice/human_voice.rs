@@ -188,6 +188,10 @@ pub struct HumanVoice {
     pub clock: f64,
     blend: [Blended; N_CONTROL],
     base_abduction: f64,
+    /// the source's posterior gap, open quotient and closure sharpness, before any murmur gesture
+    base_chink: f64,
+    base_oq: f64,
+    base_sharp: f64,
     base_closure: f64,
     score_f0: Option<f64>,
     lim_env: f64,
@@ -243,6 +247,9 @@ impl HumanVoice {
             clock: 0.0,
             blend: [Blended::default(); N_CONTROL],
             base_abduction: 0.0,
+            base_chink: 0.0,
+            base_oq: 0.0,
+            base_sharp: 0.0,
             base_closure: 0.0,
             score_f0: None,
             lim_env: 0.0,
@@ -327,6 +334,9 @@ impl HumanVoice {
         let bright = s.brightness - DEFAULT_SOURCE.brightness;
         let by_tension = 0.4 * s.tension + 1.375 * js_max(0.0, s.tension - 0.6);
         g.closure_sharpness = clamp(by_tension + 0.8 * bright, 0.0, 1.0);
+        self.base_chink = g.chink;
+        self.base_oq = g.open_quotient;
+        self.base_sharp = g.closure_sharpness;
         g.skew = 0.56 + 0.16 * s.tension + 0.2 * bright;
         g.fry = s.fry;
         // Jitter of a healthy, trained voice at the default roughness (0.1): about 0.45 %, well
@@ -439,6 +449,14 @@ impl HumanVoice {
             let ab = b[ControlKey::ABDUCTION.index()];
             let ab_act = if ab.weight > 0.0 { js_min(1.0, ab.weight / 2.0) } else { 0.0 };
             gp.abduction = self.base_abduction + ab.value * ab_act * k2;
+            // murmur: breathy voice that keeps vibrating. The posterior gap widens (it leaks air but,
+            // unlike abduction, does not stop the folds), the open phase lengthens and the closure
+            // softens, so H1 rises over H2 and aspiration noise rides on the voicing.
+            let mu = b[ControlKey::MURMUR.index()];
+            let m = if mu.weight > 0.0 { clamp(mu.value, 0.0, 1.0) * js_min(1.0, mu.weight / 2.0) } else { 0.0 };
+            gp.chink = self.base_chink + 0.1 * m * k2;
+            gp.open_quotient = js_min(0.95, self.base_oq + 0.2 * m);
+            gp.closure_sharpness = self.base_sharp * (1.0 - 0.8 * m);
             let cl = b[ControlKey::CLOSURE.index()];
             gp.closure = js_max(self.base_closure, if cl.weight > 0.0 { cl.value * js_min(1.0, cl.weight / 2.0) } else { 0.0 });
             let br = b[ControlKey::BREATH.index()];
@@ -461,6 +479,9 @@ impl HumanVoice {
         } else {
             self.artic.step(dt, None, 1.0);
             self.glottis.params.abduction = self.base_abduction;
+            self.glottis.params.chink = self.base_chink;
+            self.glottis.params.open_quotient = self.base_oq;
+            self.glottis.params.closure_sharpness = self.base_sharp;
             self.glottis.params.closure = self.base_closure;
             self.score_f0 = None;
         }
