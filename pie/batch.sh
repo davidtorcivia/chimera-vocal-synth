@@ -6,7 +6,7 @@ PY=$HOME/AI/PIE/tts/vc/.venv-eval/bin/python
 run() {
   local a b
   a=$(OMP_NUM_THREADS=8 $PY -I pie/eval.py "$1" --set "$SET" --jobs 8 --extra "$2" 2>&1 | grep -v -i warn | tail -2 | head -1)
-  b=$(OMP_NUM_THREADS=8 $PY -I pie/mos.py "$1" 2>&1 | tail -1 | sed 's/^[^:]*: //')
+  b=""; [ -n "${MOS:-}" ] && b=$(OMP_NUM_THREADS=8 $PY -I pie/mos.py "$1" 2>&1 | tail -1 | sed "s/^[^:]*: //")
   echo "$a | $b"
 }
 while [ $# -gt 0 ]; do

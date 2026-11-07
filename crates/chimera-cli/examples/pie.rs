@@ -17,6 +17,11 @@
 //!   mur_ab mur_dur mur_dip   murmur abduction, its length after the release (s), pitch dip (fraction)
 //!   src:F=v            voice source field F (breathiness tension brightness roughness drift pressure)
 //!   ng_glottis ng_constr ng_teeth   multipliers on the turbulence noise gains (aspiration, constrictions, teeth)
+//!   trill_min           lengthen every non-syllabic r (ɾ or r after map:) to at least this (s), taking the time
+//!                       from its neighbours (each keeps at least 55 % of its length); 0 = off
+//!   trill_n             >0: every non-syllabic r becomes trill_n explicit tip contacts, each a closing then an
+//!                       opening gesture (trill_close = closed share of a cycle, trill_open_y = tip height between
+//!                       contacts, trill_speed = articulator speed); replaces the planner's own r/ɾ gestures
 //!   f0                  base pitch (Hz; 0 = the body's default)
 //!   accent              pitch excursion of accented syllables (fraction of the base)
 use chimera::anatomy::human::{ArticKey, BODY_FEMALE, BODY_MALE};
@@ -43,6 +48,11 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("mur_dur", "0.04"),
     ("mur_dip", "0.11"),
     ("f0", "0"),
+    ("trill_min", "0"),
+    ("trill_n", "0"),
+    ("trill_close", "0.4"),
+    ("trill_open_y", "8.9"),
+    ("trill_speed", "4"),
     ("ng_glottis", "1"),
     ("ng_constr", "1"),
     ("ng_teeth", "1"),
@@ -127,6 +137,42 @@ fn main() {
                 }
             })
             .collect();
+        let mut segs = segs;
+        let tmin = f("trill_min");
+        if tmin > 0.0 {
+            for i in 0..segs.len() {
+                let syl = segs_j[i]["syllabic"].as_bool().unwrap();
+                if syl || !(segs[i].ipa == "r" || segs[i].ipa == "ɾ") {
+                    continue;
+                }
+                let d = segs[i].dur.unwrap();
+                if d >= tmin {
+                    continue;
+                }
+                let mut need = tmin - d;
+                let mut got = 0.0;
+                for j in [i.wrapping_sub(1), i + 1] {
+                    if j < segs.len() && need > 0.0 {
+                        let dj = segs[j].dur.unwrap();
+                        let take = (need / 2.0_f64.max(1.0)).min(dj * 0.45).min(need);
+                        segs[j].dur = Some(dj - take);
+                        got += take;
+                    }
+                }
+                need -= got;
+                // the rest from whichever neighbour still has room
+                for j in [i.wrapping_sub(1), i + 1] {
+                    if j < segs.len() && need > 1e-6 {
+                        let dj = segs[j].dur.unwrap();
+                        let take = need.min((dj - 0.55 * segs_j[j]["dur"].as_f64().unwrap()).max(0.0));
+                        segs[j].dur = Some(dj - take);
+                        got += take;
+                        need -= take;
+                    }
+                }
+                segs[i].dur = Some(d + got);
+            }
+        }
         let mut plan = plan_utterance(&segs, &PlanOptions { body: body_name.into(), t0: start - LEAD, f0: Some(f0), accent: Some(accent), ..Default::default() });
         // PIE voiceless stops are plain: the English aspiration gesture becomes a short-lag one
         let vot = f("vot");
@@ -161,6 +207,29 @@ fn main() {
             }
         }
         let ps = plan.segments.clone();
+        let tn = f("trill_n");
+        if tn > 0.0 {
+            let rs: Vec<usize> = (0..segs.len()).filter(|&i| !segs_j[i]["syllabic"].as_bool().unwrap() && (segs[i].ipa == "r" || segs[i].ipa == "ɾ")).collect();
+            if !rs.is_empty() {
+                let spans: Vec<(f64, f64)> = rs.iter().map(|&i| (ps[i].t0, ps[i].t1)).collect();
+                plan.gestures.retain(|g| !((g.label_str() == "r" || g.label_str() == "ɾ") && g.strength >= 40.0 && spans.iter().any(|(a, b)| g.t1 > a - 0.05 && g.t0 < b + 0.05)));
+                for (a, b) in spans {
+                    let n = tn.round() as usize;
+                    let per = (b - a) / n as f64;
+                    let cl = f("trill_close");
+                    let sp = f("trill_speed");
+                    for k in 0..n {
+                        let c0 = a + k as f64 * per;
+                        let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, 9.7);
+                        let open = Targets::default().with(ArticKey::TtX, 6.1).with(ArticKey::TtY, f("trill_open_y"));
+                        plan.gestures.push(Gesture::new(c0 - 0.006, c0 + cl * per, 0.004, 0.004, 40.0, close).speed(sp).label("trill"));
+                        if k + 1 < n {
+                            plan.gestures.push(Gesture::new(c0 + cl * per, c0 + per - 0.006, 0.004, 0.004, 40.0, open).speed(sp).label("trill"));
+                        }
+                    }
+                }
+            }
+        }
         for (i, s) in segs_j.iter().enumerate() {
             let (t0, t1) = (ps[i].t0, ps[i].t1);
             if s["labial"].as_bool().unwrap() {
