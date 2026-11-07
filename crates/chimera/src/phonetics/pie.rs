@@ -120,9 +120,16 @@ pub struct PieOptions {
     /// /i/ is raised (tongue body, cm) and the jaw closed a little, so short /i/ isn't heard as /e/
     pub i_raise: f64,
     pub i_jaw: f64,
-    /// /j/ tongue body raise (cm) and /w/ lip aperture (cm)
+    /// /e/ tongue body height change (cm): a little lower, so short /e/ isn't heard as /i/
+    pub e_raise: f64,
+    /// /j/ tongue body raise (cm)
     pub j_raise: f64,
+    /// a real /w/: lip aperture (cm), protrusion, tongue body front–back (cm)
     pub w_lip_ap: f64,
+    pub w_lip_prot: f64,
+    pub w_tb_x: f64,
+    /// the [w] release of a labiovelar: lip aperture (cm)
+    pub glide_lip_ap: f64,
     /// pause between phrases (s)
     pub pause: f64,
 }
@@ -136,8 +143,8 @@ impl Default for PieOptions {
             lab_str: 1.2,
             lab_carry: 0.03,
             lab_lead: 0.02,
-            lab_glide: 0.0,
-            vot: 0.025,
+            lab_glide: 0.03,
+            vot: 0.03,
             asp_ab: 0.28,
             mur_ab: 0.07,
             mur_dur: 0.04,
@@ -151,8 +158,12 @@ impl Default for PieOptions {
             trill_speed: 6.0,
             i_raise: 0.15,
             i_jaw: -0.1,
+            e_raise: -0.1,
             j_raise: 0.08,
-            w_lip_ap: 0.12,
+            w_lip_ap: 0.16,
+            w_lip_prot: 1.5,
+            w_tb_x: 2.1,
+            glide_lip_ap: 0.12,
             pause: 0.3,
         }
     }
@@ -389,7 +400,7 @@ fn engine_ipa(s: &PieSeg) -> &str {
 /// Plan one phrase. Segments without a duration get [`default_durations`].
 pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
     if p.lab_glide <= 0.0 || !segs_in.iter().any(|s| s.labial) {
-        return plan_core(segs_in, question, o, p);
+        return plan_core(segs_in, &[], question, o, p);
     }
     // a labialized consonant releases into its vowel through a rounded transition: plan it as a
     // short [w] at the vowel's start (time taken from the vowel), then fold that span back into the
@@ -412,7 +423,7 @@ pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p
             }
         }
     }
-    let mut plan = plan_core(&segs, question, o, p);
+    let mut plan = plan_core(&segs, &glides, question, o, p);
     for &k in glides.iter().rev() {
         let t1 = plan.segments[k].t1;
         plan.segments[k - 1].t1 = t1;
@@ -421,7 +432,8 @@ pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p
     plan
 }
 
-fn plan_core(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
+/// `glides`: indices of the [w] release transitions plan_pie_utterance inserted (tuned apart from a real /w/).
+fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
     let n = segs_in.len();
     if n == 0 {
         return Plan { gestures: Vec::new(), segments: Vec::new(), end: o.t0 };
@@ -468,6 +480,7 @@ fn plan_core(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions
         .collect();
     let po = PlanOptions { accent: Some(p.accent), intonation: Some(if question { Intonation::Question } else { Intonation::Statement }), ..o.clone() };
     let mut plan = plan_utterance(&segs, &po);
+    let w_spans: Vec<(f64, f64)> = plan.segments.iter().map(|s| (s.t0, s.t1)).collect();
     let f0 = o.f0.unwrap_or(110.0);
     // plain voiceless stops; the tuned /i/ /j/ /w/
     for g in plan.gestures.iter_mut() {
@@ -490,14 +503,28 @@ fn plan_core(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions
                     g.targets.set(ArticKey::Jaw, j + p.i_jaw);
                 }
             }
+            "e" => {
+                if let Some(y) = g.targets.get(ArticKey::TbY) {
+                    g.targets.set(ArticKey::TbY, y + p.e_raise);
+                }
+            }
             "j" => {
                 if let Some(y) = g.targets.get(ArticKey::TbY) {
                     g.targets.set(ArticKey::TbY, y + p.j_raise);
                 }
             }
             "w" => {
-                if g.targets.has(ArticKey::LipAp) || g.strength >= 40.0 {
-                    g.targets.set(ArticKey::LipAp, p.w_lip_ap);
+                if g.strength >= 40.0 {
+                    let mid = 0.5 * (g.t0 + g.t1);
+                    let glide = glides.iter().any(|&k| w_spans.get(k).is_some_and(|&(a, b)| mid > a - 0.04 && mid < b + 0.04));
+                    if glide {
+                        g.targets.set(ArticKey::LipAp, p.glide_lip_ap);
+                    } else {
+                        // a real /w/: rounder and further back than /u/, so it is not heard as a dark /l/
+                        g.targets.set(ArticKey::LipAp, p.w_lip_ap);
+                        g.targets.set(ArticKey::LipProt, p.w_lip_prot);
+                        g.targets.set(ArticKey::TbX, p.w_tb_x);
+                    }
                 }
             }
             _ => {}

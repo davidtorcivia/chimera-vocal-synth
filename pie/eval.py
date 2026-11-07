@@ -65,9 +65,14 @@ COARSE = {'ɡ': 'g', 'c': 'k', 'ɟ': 'g', 'χ': 'h', 'ʁ': 'h', 'ɣ': 'h', 'x': 
 FINE = {'ɡ': 'g', 'ɾ': 'r', 'ɹ': 'r', 'ʀ': 'r', 'ɐ': 'a', 'ɑ': 'a', 'ɛ': 'e', 'ɔ': 'o', 'ɪ': 'i', 'ʊ': 'u', 'ɜ': 'ə',
         'ʌ': 'ə', 'ɵ': 'o', 'æ': 'a', 'ɫ': 'l', 'ɒ': 'o', 'ʔ': '', 'x': 'χ', 'ɣ': 'ʁ', 'ɦ': 'h', 'ɚ': 'ə', 'ɝ': 'ə',
         'ɲ': 'n', 'ŋ': 'n', 'ʝ': 'j', 'ç': 'c'}
+# glide-fair (the primary score): fine with w = u and j = i, since after a vowel [w] and [u̯] are one sound
+# and the recognizer writes either
+GFAIR = dict(FINE, w='u', j='i')
 
 
 def norm(phones, table):
+    if table is GFAIR:
+        return [GFAIR.get(x, x) for x in norm(phones, FINE)]
     out = []
     for p in phones:
         w = 'ʷ' in p
@@ -89,6 +94,8 @@ def target_seq(segs, table):
         ph = norm([b], table)
         if table is FINE and s["labial"]:
             ph = ph + ['w']
+        if table is GFAIR:
+            ph = [GFAIR.get(x, x) for x in norm([b], FINE)] + (['u'] if s["labial"] else [])
         seq += ph
         owner += [k] * len(ph)
     return seq, owner
@@ -172,7 +179,7 @@ def main():
     import librosa
     import recognize as R
     off = 0.0 if a.vtl else 0.3
-    tot = {"coarse": [0, 0], "fine": [0, 0]}
+    tot = {"coarse": [0, 0], "fine": [0, 0], "gfair": [0, 0]}
     by_set = {}
     per_phone = {}
     items = []
@@ -189,17 +196,17 @@ def main():
                 lg = m(p(seg, sampling_rate=16000, return_tensors="pt").input_values).logits[0].numpy()
             rec = R.decode(lg)
             row = {"file": stem, "utt": k, "rec": "".join(rec)}
-            for name, table in (("coarse", COARSE), ("fine", FINE)):
+            for name, table in (("coarse", COARSE), ("fine", FINE), ("gfair", GFAIR)):
                 tgt, owner = target_seq(ut["segs"], table)
                 e, ok, got = align(norm(rec, table), tgt)
                 tot[name][0] += e
                 tot[name][1] += len(tgt)
-                bs = by_set.setdefault(grp, {"coarse": [0, 0], "fine": [0, 0]})
+                bs = by_set.setdefault(grp, {"coarse": [0, 0], "fine": [0, 0], "gfair": [0, 0]})
                 bs[name][0] += e
                 bs[name][1] += len(tgt)
                 row[name] = e
                 row["n_" + name] = len(tgt)
-                if name == "fine":
+                if name == "gfair":
                     for t, o, g, ow in zip(tgt, ok, got, owner):
                         key = ut["segs"][ow]["pie"].replace("ˈ", "")
                         key = base(key) + ("ʷ" if "ʷ" in key else "") + ("ʱ" if "ʱ" in key else "") + ("̩" if ut["segs"][ow]["syllabic"] else "")
@@ -212,13 +219,14 @@ def main():
             items.append(row)
     res = {"run": a.run, "set": a.set, "extra": a.extra, "vtl": a.vtl,
            "coarse": tot["coarse"][0] / max(1, tot["coarse"][1]), "fine": tot["fine"][0] / max(1, tot["fine"][1]),
+           "gfair": tot["gfair"][0] / max(1, tot["gfair"][1]),
            "by_set": {g: {n: v[n][0] / max(1, v[n][1]) for n in v} for g, v in by_set.items()},
            "per_phone": per_phone, "items": items}
     json.dump(res, open(out / "scores.json", "w"), ensure_ascii=False, indent=1)
-    print(f"{a.run} [{a.set}] coarse {res['coarse']*100:.1f}%  fine {res['fine']*100:.1f}%  " +
-          "  ".join(f"{g} {v['fine']*100:.1f}" for g, v in sorted(res["by_set"].items())))
+    print(f"{a.run} [{a.set}] GLIDE-FAIR {res['gfair']*100:.1f}%  fine {res['fine']*100:.1f}%  coarse {res['coarse']*100:.1f}%  " +
+          "  ".join(f"{g} {v['gfair']*100:.1f}" for g, v in sorted(res["by_set"].items())))
     worst = sorted(per_phone.items(), key=lambda kv: -kv[1]["miss"])[:16]
-    print("most missed (fine): " + ", ".join(
+    print("most missed (glide-fair): " + ", ".join(
         f"{k} {v['miss']}/{v['n']}" + ("(" + ",".join(f"{g}{c}" for g, c in sorted(v['as'].items(), key=lambda x: -x[1])[:3]) + ")")
         for k, v in worst))
 
