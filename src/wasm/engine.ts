@@ -150,6 +150,34 @@ export function planPhrases(phrases: { segments: Segment[]; intonation?: "statem
   return call("planPhrases", { phrases: phrases.map((p) => ({ segments: p.segments, intonation: p.intonation, pause: p.pause })), options });
 }
 
+/** One Proto-Indo-European segment (`phonetics::pie::PieSeg`). */
+export interface PieSeg {
+  base: string;
+  long: boolean;
+  accent: boolean;
+  labial: boolean;
+  breathy: boolean;
+  syllabic: boolean;
+  wordStart: boolean;
+  wordEnd: boolean;
+  dur?: number | null;
+}
+
+export interface PiePhrase {
+  segments: PieSeg[];
+  question: boolean;
+}
+
+/** PIE in handbook notation (*h₂éwsōs) or narrow IPA (χáw.sos) → phrases of segments. */
+export function parsePie(text: string): PiePhrase[] {
+  return call("parsePie", { text });
+}
+
+/** PIE text → a plan with the PIE features (labiovelars, murmur, trills, the pitch accent). */
+export function planPie(text: string, options: PlanOptions): Plan {
+  return call("planPie", { text, options });
+}
+
 export function planSong(notes: SungNote[], options: { body: BodyMix; bpm: number; t0: number; vibrato: number }): Plan {
   return call("planSong", { notes, options });
 }

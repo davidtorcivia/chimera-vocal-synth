@@ -123,6 +123,37 @@ pub fn speech(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Proto-Indo-European through `phonetics::pie`. `render pie <out> ["PIE text"] [body]`
+pub fn pie(ctx: &Ctx, a: &[String]) -> Result<(), String> {
+    use chimera::phonetics::pie::{PieOptions, plan_pie};
+    let name = arg(a, 0, "out/pie");
+    let text = arg(a, 1, "χáwsos léwka déjwi diwés dʱúgəter");
+    let body_name = arg(a, 2, "male");
+    let b = body(body_name)?;
+    let f0 = match body_name {
+        "female" => 200.0,
+        "child" => 250.0,
+        _ => 110.0,
+    };
+    let mut voice = HumanVoice::new(FS, b, 2);
+    // a clean, slightly lax source: the settings the PIE defaults were tuned with
+    voice.set_source(&SourcePatch { f0: Some(f0), breathiness: Some(0.05), tension: Some(0.4), ..Default::default() });
+    let plan = plan_pie(text, &PlanOptions { body: body_name.into(), t0: 0.05, f0: Some(f0), ..Default::default() }, &PieOptions::default());
+    if plan.segments.is_empty() {
+        return Err(format!("no PIE in {text:?}"));
+    }
+    voice.schedule(&plan.gestures);
+    let total = js_round(FS * (plan.end + 0.4)) as usize;
+    let mut out = vec![0f32; total];
+    render_blocks(&mut voice, &mut out);
+    let file = wav_name(name);
+    ctx.write_wav(&file, &out)?;
+    println!("wrote {file}  {} s  peak {}", fixed(total as f64 / FS, 2), fixed(peak(&out), 3));
+    let marks: Vec<(f64, String)> = plan.segments.iter().map(|s| (s.t0, s.ipa.clone())).collect();
+    println!("{}", mark_line(&marks));
+    Ok(())
+}
+
 /// English text through G2P and the phrase planner. `render text <out> ["Text."] [body]`
 pub fn text(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     let name = arg(a, 0, "out/text");

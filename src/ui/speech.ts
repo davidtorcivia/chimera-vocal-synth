@@ -2,7 +2,7 @@
 import type { BodyMix } from "../wasm/types.ts";
 import { EnglishG2P, type Phrase } from "../wasm/engine.ts";
 import { tokenizeIpa } from "../wasm/engine.ts";
-import { planPhrases, type Plan, type Segment } from "../wasm/engine.ts";
+import { planPhrases, planPie, parsePie, type Plan, type Segment } from "../wasm/engine.ts";
 import { engine } from "../audio/AudioEngine.ts";
 import type { Gesture } from "../wasm/types.ts";
 import { wordSpans, type WordSpan } from "./words.ts";
@@ -55,6 +55,38 @@ export function speakPhrases(phrases: { segments: Segment[]; intonation?: "state
   const plan = planPhrases(phrases, { body: o.body, t0: 0, rate: o.rate, f0: o.f0 });
   const id = engine.schedule({ gestures: plan.gestures.map((g: Gesture) => ({ ...g, targets: { ...g.targets } })), segments: plan.segments, end: plan.end });
   current = { plan, offset: null, id, transcription: transcribe(phrases), words: wordSpans(phrases, plan) };
+  for (const l of listeners) l(current);
+  return current;
+}
+
+/** Proto-Indo-European (handbook notation or narrow IPA): planned by the engine's PIE planner, one
+ *  planned segment per PIE segment, so each word's span comes straight from the parse. */
+export function speakPie(text: string, o: { body: BodyMix; rate: number; f0: number }): SpokenPlan | null {
+  const phrases = parsePie(text);
+  if (!phrases.length) return null;
+  const plan = planPie(text, { body: o.body, t0: 0, rate: o.rate, f0: o.f0 });
+  const id = engine.schedule({ gestures: plan.gestures.map((g: Gesture) => ({ ...g, targets: { ...g.targets } })), segments: plan.segments, end: plan.end });
+  const words: WordSpan[] = [];
+  let j = 0;
+  for (const p of phrases) {
+    let t0: number | null = null, label = "";
+    for (const s of p.segments) {
+      const ps = plan.segments[j++];
+      if (!ps) continue;
+      t0 ??= ps.t0;
+      label += ps.ipa;
+      if (s.wordEnd) {
+        words.push({ text: label, t0, t1: ps.t1 });
+        t0 = null;
+        label = "";
+      }
+    }
+  }
+  const transcription = phrases.map((p, k) => {
+    const first = phrases.slice(0, k).reduce((n, q) => n + q.segments.length, 0);
+    return p.segments.map((s, i) => (plan.segments[first + i]?.ipa ?? s.base) + (s.wordEnd ? " " : "")).join("").trim() + (p.question ? "?" : "");
+  }).join(" | ");
+  current = { plan, offset: null, id, transcription, words };
   for (const l of listeners) l(current);
   return current;
 }

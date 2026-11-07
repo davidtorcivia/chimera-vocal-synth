@@ -142,6 +142,9 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
         // so the UI can find a word's span in a plan's timeline
         "plannedCounts" => to_json(&arg::<Vec<String>>(req, "ipa")?.iter().map(|s| planner::expand(s).map_or(1, |p| p.len())).collect::<Vec<_>>()),
         "planPhrases" => to_json(&planner::plan_phrases(&arg::<Vec<PhraseInput>>(req, "phrases")?, &arg::<PlanOptions>(req, "options")?)),
+        // PIE text (handbook notation or narrow IPA) → plan, and the parse the UI shows
+        "parsePie" => to_json(&chimera::phonetics::pie::parse_pie(&arg::<String>(req, "text")?)),
+        "planPie" => to_json(&chimera::phonetics::pie::plan_pie(&arg::<String>(req, "text")?, &arg::<PlanOptions>(req, "options")?, &arg::<Option<chimera::phonetics::pie::PieOptions>>(req, "pie")?.unwrap_or_default())),
         "planSong" => to_json(&sing::plan_song(&arg::<Vec<SungNote>>(req, "notes")?, &arg::<SongOptions>(req, "options")?)),
         "planNoteOn" => to_json(&sing::plan_note_on(&arg::<Syllable>(req, "syl")?, arg(req, "midi")?, &arg::<NoteOnOptions>(req, "options")?)),
         "planNoteOff" => to_json(&sing::plan_note_off(&arg::<Syllable>(req, "syl")?, arg(req, "midi")?, arg::<BodyMix>(req, "body")?)),

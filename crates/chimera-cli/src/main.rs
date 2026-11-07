@@ -18,6 +18,8 @@ usage: chimera <command> [args] [--float]
 
   render speech  <out> [\"ipa / ipa\"] [male|female|child]
   render text    <out> [\"English text.\"] [male|female|child]
+  render pie     <out> [\"PIE text\"] [male|female|child]
+                 (handbook notation *h₂éwsōs or narrow IPA χáw.sos; ‖ , ? break phrases)
   render song    [outdir] [male|female|child]
   render notes   <in.json> <out> [male|female|child] [--artic tracks.json] [--tele voice.tele]
                  (melody file; midi <= 0 is a rest; --artic also writes the articulators at 100 Hz)
@@ -98,6 +100,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             let rest = &args[2..];
             match *kind {
                 "speech" => render::speech(&ctx, rest),
+                "pie" => render::pie(&ctx, rest),
                 "text" => render::text(&ctx, rest),
                 "song" => render::song(&ctx, rest),
                 "notes" => render::notes(&ctx, rest),

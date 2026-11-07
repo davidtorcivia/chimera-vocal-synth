@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store.ts";
-import { speakText, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow } from "../speech.ts";
+import { speakText, speakPie, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow } from "../speech.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { tokenizeIpa } from "../../wasm/engine.ts";
 import { Slider, Toggle } from "./Controls.tsx";
@@ -13,6 +13,8 @@ import { V } from "../colors.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 
 const EXAMPLES = ["Hello. Can you hear me?", "She sells sea shells by the sea shore.", "Every sound here is air moving through a throat.", "The quick brown fox jumps over the lazy dog."];
+/** Proto-Indo-European examples (the "PIE" toggle): the opening of a dawn hymn, and a line of Schleicher's fable */
+const PIE_EXAMPLES = ["*h₂éwsōs léukā déiwī dʰugh₂tḗr", "*h₂ówis h₁ékʷōns spéket"];
 
 // IPA pulmonic consonant chart (rows = manner, columns = place); empty cells are null
 const PLACES = ["Bilabial", "Labiodental", "Dental", "Alveolar", "Postalveolar", "Retroflex", "Palatal", "Velar", "Uvular", "Pharyngeal", "Glottal"];
@@ -118,7 +120,16 @@ export function SpeakRight() {
   const f0 = useStore((s) => s.source.f0);
   const start = useStore((s) => s.start);
   const [text, setText] = useState(EXAMPLES[0]);
-  const [ipa, setIpa] = useState(false);
+  const [ipa, setIpaRaw] = useState(false);
+  const [pie, setPieRaw] = useState(false);
+  const setIpa = (v: boolean) => {
+    setIpaRaw(v);
+    if (v) setPieRaw(false);
+  };
+  const setPie = (v: boolean) => {
+    setPieRaw(v);
+    if (v) setIpaRaw(false);
+  };
   const [rate, setRate] = useState(1);
   const [busy, setBusy] = useState(false);
   const [trans, setTrans] = useState(currentPlan()?.transcription ?? "");
@@ -129,7 +140,8 @@ export function SpeakRight() {
     setBusy(true);
     try {
       await start();
-      await speakText(text, { ipa, body, rate, f0 });
+      if (pie) speakPie(text, { body, rate, f0 });
+      else await speakText(text, { ipa, body, rate, f0 });
     } finally {
       setBusy(false);
     }
@@ -141,7 +153,12 @@ export function SpeakRight() {
 
   return (
     <div className="right right-speak">
-      <Screen className="s-say" title="Say" sub="Text to speech" tools={<Toggle label="Text is IPA" checked={ipa} onChange={setIpa} />}>
+      <Screen className="s-say" title="Say" sub="Text to speech" tools={
+          <>
+            <Toggle label="Text is IPA" checked={ipa} onChange={setIpa} />
+            <Toggle label="PIE" checked={pie} onChange={setPie} />
+          </>
+        }>
         <div className="say">
           <div className="say-row">
             <textarea
@@ -152,9 +169,9 @@ export function SpeakRight() {
                 e.stopPropagation();
               }}
               rows={2}
-              spellCheck={!ipa}
-              aria-label={ipa ? "IPA to speak" : "Text to speak"}
-              placeholder={ipa ? "Type IPA, for example ˈhɛloʊ" : "Type something for the voice to say"}
+              spellCheck={!ipa && !pie}
+              aria-label={pie ? "Proto-Indo-European to speak" : ipa ? "IPA to speak" : "Text to speak"}
+              placeholder={pie ? "Type PIE, for example *h₂éwsōs or χáw.sos" : ipa ? "Type IPA, for example ˈhɛloʊ" : "Type something for the voice to say"}
             />
             <div className="say-actions">
               <button className="primary" onClick={() => void speak()} disabled={busy}>
@@ -181,6 +198,19 @@ export function SpeakRight() {
                 onClick={() => {
                   setText(ex);
                   setIpa(false);
+                  setPie(false);
+                }}
+              >
+                {ex}
+              </Chip>
+            ))}
+            {PIE_EXAMPLES.map((ex) => (
+              <Chip
+                key={ex}
+                toggle={false}
+                onClick={() => {
+                  setText(ex);
+                  setPie(true);
                 }}
               >
                 {ex}
