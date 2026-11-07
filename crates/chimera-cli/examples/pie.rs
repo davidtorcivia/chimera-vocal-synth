@@ -10,11 +10,13 @@
 //! Options (key=value), all with tuned defaults (see DEFAULTS):
 //!   map:X=Y            render segment X as Y (e.g. map:e=ɛ)
 //!   ov:L:key=v         set articulator/source `key` to v in the planner's gestures labelled L
+//!   shift:L=dt         move the planner's gestures labelled L by dt seconds (negative = earlier)
 //!   dv:L:key=d         add d to `key` in the planner's gestures labelled L that set it
 //!   lab_ap lab_prot lab_str lab_carry lab_lead   the labiovelar rounding
 //!   vot asp_ab          voiceless stops: release lag (s) and abduction
 //!   mur_ab mur_dur mur_dip   murmur abduction, its length after the release (s), pitch dip (fraction)
 //!   src:F=v            voice source field F (breathiness tension brightness roughness drift pressure)
+//!   ng_glottis ng_constr ng_teeth   multipliers on the turbulence noise gains (aspiration, constrictions, teeth)
 //!   f0                  base pitch (Hz; 0 = the body's default)
 //!   accent              pitch excursion of accented syllables (fraction of the base)
 use chimera::anatomy::human::{ArticKey, BODY_FEMALE, BODY_MALE};
@@ -41,6 +43,9 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("mur_dur", "0.04"),
     ("mur_dip", "0.11"),
     ("f0", "0"),
+    ("ng_glottis", "1"),
+    ("ng_constr", "1"),
+    ("ng_teeth", "1"),
 ];
 
 fn key(name: &str) -> ControlKey {
@@ -63,10 +68,13 @@ fn main() {
     let mut overrides: Vec<(String, ControlKey, f64)> = Vec::new();
     let mut deltas: Vec<(String, ControlKey, f64)> = Vec::new();
     let mut src_patch = SourcePatch::default();
+    let mut shifts: Vec<(String, f64)> = Vec::new();
     for kv in a.iter().skip(4) {
         let (k, v) = kv.split_once('=').unwrap_or_else(|| panic!("option {kv:?} is not key=value"));
         if let Some(x) = k.strip_prefix("map:") {
             remap.insert(x.to_string(), v.to_string());
+        } else if let Some(x) = k.strip_prefix("shift:") {
+            shifts.push((x.to_string(), v.parse().unwrap()));
         } else if let Some(x) = k.strip_prefix("src:") {
             let v: f64 = v.parse().unwrap();
             match x {
@@ -99,6 +107,9 @@ fn main() {
     let mut voice = HumanVoice::new(FS, body, 2);
     src_patch.f0 = Some(f0);
     voice.set_source(&src_patch);
+    voice.airway.noise_gain.glottis *= f("ng_glottis");
+    voice.airway.noise_gain.constriction *= f("ng_constr");
+    voice.airway.noise_gain.teeth *= f("ng_teeth");
     let mut end = 0.0f64;
     for u in src["utterances"].as_array().unwrap() {
         let segs_j = u["segs"].as_array().unwrap();
@@ -128,6 +139,12 @@ fn main() {
                     g.ramp_out = 0.02;
                 } else {
                     g.t1 += (vot - 0.012) * 0.4;
+                }
+            }
+            for (label, dt) in &shifts {
+                if g.label_str() == label {
+                    g.t0 += dt;
+                    g.t1 += dt;
                 }
             }
             for (label, k, d) in &deltas {
