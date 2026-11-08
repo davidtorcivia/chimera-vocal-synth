@@ -107,13 +107,13 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
     <p class="hint">The whole hymn on its corpus timing, each voice through the same voice changer with the corpus settings. Switch while it plays to stay in place; the site's current voice (the Kokoro model trained on the VocalTractLab corpus) has its own timing, so it won't line up.</p>
     <div id="hymn" style="display:grid;gap:12px"></div>
     <div class="tablebox"><table>
-      <thead><tr><th>Dawn hymn, sounds missed</th><th>VTL raw</th><th>VTL conv.</th><th>Chimera eve raw</th><th>eve conv.</th><th>Chimera night raw</th><th>night conv.</th><th>Site voice (Kokoro)</th></tr></thead>
+      <thead><tr><th>Dawn hymn, sounds missed</th><th>VTL raw</th><th>VTL conv.</th><th>Chimera eve raw</th><th>eve conv.</th><th>Chimera night raw</th><th>night conv.</th><th>u fix raw</th><th>u fix conv.</th><th>Site voice (Kokoro)</th></tr></thead>
       <tbody>
-        <tr><td>Male</td><td class="n">40%</td><td class="n">52%</td><td class="n">37%</td><td class="n">41%</td><td class="n">33%</td><td class="n best">39%</td><td class="n">54%</td></tr>
-        <tr><td>Female</td><td class="n">57%</td><td class="n">64%</td><td class="n">43%</td><td class="n">46%</td><td class="n">43%</td><td class="n best">44%</td><td class="n">59%</td></tr>
+        <tr><td>Male</td><td class="n">40%</td><td class="n">52%</td><td class="n">37%</td><td class="n">41%</td><td class="n">33%</td><td class="n best">39%</td><td class="n">33%</td><td class="n">42%</td><td class="n">54%</td></tr>
+        <tr><td>Female</td><td class="n">57%</td><td class="n">64%</td><td class="n">43%</td><td class="n">46%</td><td class="n">43%</td><td class="n best">44%</td><td class="n">43%</td><td class="n">48%</td><td class="n">59%</td></tr>
       </tbody>
     </table></div>
-    <p class="hint">Scored the same way for all five: the whole hymn transcribed by the phone recognizer and compared with its 189 target sounds (edit distance, with the same near-neighbour equivalences as below), so the site voice's own timing doesn't matter. The site voice was trained on the converted VocalTractLab corpus; a voice trained on converted Chimera would start from the Chimera-converted columns. "Eve" is the engine of the evening of 7 November, "night" the engine after the overnight work (χ, trill, nasals, labiovelars, dark l). Converting the hymn cost 1,282 credits, the night version 646.</p>
+    <p class="hint">Scored the same way for all five: the whole hymn transcribed by the phone recognizer and compared with its 189 target sounds (edit distance, with the same near-neighbour equivalences as below), so the site voice's own timing doesn't matter. The site voice was trained on the converted VocalTractLab corpus; a voice trained on converted Chimera would start from the Chimera-converted columns. "Eve" is the engine of the evening of 7 November, "night" the engine after the overnight work (χ, trill, nasals, labiovelars, dark l), "u fix" the same with u no longer nearly closed (listen to the ú of dʰúgh₂ter). The two night conversions differ mostly in sounds the u fix does not touch (e, w, t): that is the voice changer varying from one run to the next, which on one 26-second passage is several points. Converting the hymn cost 1,282 credits, the night version 646.</p>
   </section>
 
   <section>
@@ -128,7 +128,7 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
         <tr><td>Chimera tonight</td><td class="n best">27.4%</td><td class="n best">33.8%</td></tr>
       </tbody>
     </table></div>
-    <p class="hint">On 162 held-out corpus sentences (not converted): VocalTractLab 54.3%, the converted corpus 53.2%, Chimera at the second pilot 30.2%, tonight 27.6%. Today's Chimera beats VTL after conversion on all 24 sentences and the pilot-time Chimera on 12. Naturalness of the converted audio (UTMOS) is the same for all three, about 3.2–3.3.</p>
+    <p class="hint">On 162 held-out corpus sentences (not converted): VocalTractLab 54.3%, the converted corpus 53.2%, Chimera at the second pilot 30.2%, tonight 27.5%. Today's Chimera beats VTL after conversion on all 24 sentences and the pilot-time Chimera on 12. Naturalness of the converted audio (UTMOS) is the same for all three, about 3.2–3.3.</p>
     <p class="hint">What the recognizer cannot hear in any of them: the murmured stops (bʰ dʰ gʰ), the palatals (ḱ ǵ) and ʁʷ. Those are checked by acoustics instead: murmur is 5–6.5 dB breathier than the plain stop and fully voiced, ḱ has palatal transitions. One regression shows only after conversion: today's χ survives the voice changer worse than the pilot's (63% missed after conversion against 33%, though both are about 30% raw).</p>
   </section>
 
@@ -268,6 +268,8 @@ for (const [v, title] of [['m', 'Male'], ['f', 'Female']]) {
     { label: 'eve conv.', src: `h/${v}-chimc.mp3`, cls: 'c' },
     { label: 'Chimera night', src: `h/${v}-chim3.mp3`, cls: 'c' },
     { label: 'night conv.', src: `h/${v}-chim3c.mp3`, cls: 'c' },
+    { label: 'u fix', src: `h/${v}-chim4.mp3`, cls: 'c' },
+    { label: 'u fix conv.', src: `h/${v}-chim4c.mp3`, cls: 'c' },
     { label: 'site voice', src: `h/${v}-site.mp3` },
   ], `<div><h3>${title}</h3><div class="ipa">χáwsos léwka déjwi diwés dʱúgəter ‖ n̩sméj léwks sciɣʷwóskʷe …</div></div>`);
 }

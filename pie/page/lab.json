@@ -1,6 +1,6 @@
 {
  "credits_budget": 12000,
- "other_credits": 3038,
+ "other_credits": 3684,
  "tests": [
   {
    "name": "vtl",
@@ -103,6 +103,18 @@
   {
    "t": "2026-11-08 01:05",
    "text": "Checkpoint conversion (1,756 credits): the 24 pilot sentences and the whole dawn hymn with tonight's engine. Pilot: raw 27.4% (evening 32.4%), converted 33.8% (evening 35.6%, VTL 56.5%). Hymn converted: male 39% (41%), female 44% (46%). What the converter keeps: χ, s, o, t, d better; what it does not: the trill is much better raw but flattened again after conversion, and m, i, u, w look worse though each has only 14-40 instances. Next: whether the converter wants some vowel nasality to rebuild m and n."
+  },
+  {
+   "t": "2026-11-08 ~01:30",
+   "text": "Readiness for the full corpus run: pulled the VTL build's 4,238 clip timings from the desktop (read only) and wrote a full-corpus renderer that also copies each clip's pitch shift (±2 semitones) and accent height (3.6-4.4) from the VTL build, so the new corpus varies its prosody the way the old one did; without that every clip would share one pitch habit. All 4,238 rendered in about 16 minutes with no errors and no length mismatches (10.4 hours of audio)."
+  },
+  {
+   "t": "2026-11-08 01:57",
+   "text": "The corpus QC gate on those renders found a real defect the recognizer had hidden: u was far too quiet, 10-25 dB under the other vowels and often devoiced (2,157 weak-vowel flags). Its tongue body nearly closed on the soft palate (0.01 cm²), turning u into something close to a velar fricative. A less retracted tongue with tighter lip rounding keeps u's low F1 from the lips instead: weak u's 27% → 7%, held-out 27.5% (no accuracy cost). Re-rendering the full corpus with this fix now."
+  },
+  {
+   "t": "2026-11-08 02:13",
+   "text": "Full corpus re-rendered with the u fix: clips failing the voicing check 616 → 362, more than one weak vowel 1,040 → 540; leaving aside the h and χ brightness floors (meant for restored audio), 3,361 of 4,238 clips pass as raw sources. Most remaining voicing flags are trilled syllabic r̩, which the QC's pitch tracker loses between contacts (it is voiced for most of its length). The hymn's ú in dʰúgh₂ter rose from 14-16 dB under the other vowels to 5-6 dB; converted again (646 credits), it scores a little worse than the night version, but in sounds the fix does not touch (e, w, t), which is the voice changer's own variation. Engine ready for the full run; the renders are on disk (10.4 h, 44.1 kHz, the VTL build's names and lengths)."
   }
  ]
 }

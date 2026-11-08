@@ -65,3 +65,9 @@ their VTL timings with the build's per-clip pitch (±2 st) and accent (3.6-4.4 s
 mismatches, about 16 min on the Mac. The corpus QC gate (`pie/fullqc.py`): h/χ brightness floors are for restored
 audio and fail raw (expected); 616 clips under 97 % voiced (520 male), 1,040 with more than one weak vowel —
 u (2,157 flags), i (806), o (525). The u defect is fixed above; voicing next.
+
+Full corpus re-rendered at 6f1aa07 (u fix): voicing failures 616 → 362, weak-vowel failures 1,040 → 540; without
+the post-restore h/χ floors 3,361 / 4,238 pass. Remaining voicing flags are mostly trilled r̩ (voiced, but the
+QC pitch tracker loses it between contacts). Hymn with the u fix (646 credits): ú of dʰúgh₂ter −14/−16 → −5/−6 dB
+vs the median vowel; converted span score 35.7 → 38.9 %, the difference in e, w, t (untouched by the fix): the
+voice changer's run-to-run spread on one passage. Credits overnight: 8,430 of the 12,000 approved.
