@@ -102,6 +102,16 @@ pub struct ParametricGlottis {
     closure_sm: f64,
     amp_sm: f64,
     sm_coef: f64,
+    // the pulse shape (open quotient, skew, closure sharpness) in force for the current cycle: taken
+    // from the parameters as each cycle starts, so a change (a murmur gesture, a tension change) never
+    // steps the glottal area in mid-cycle, which radiates as a click
+    cyc_oq: f64,
+    cyc_skew: f64,
+    cyc_sharp: f64,
+    cyc_set: bool,
+    /// take the pulse shape at cycle starts only (the human voice; the creatures keep per-sample shape,
+    /// as their recorded behaviour has it)
+    pub cycle_latch: bool,
 }
 
 impl ParametricGlottis {
@@ -132,6 +142,11 @@ impl ParametricGlottis {
             closure_sm: 0.0,
             amp_sm: 0.0,
             sm_coef: 1.0 - exp(-1.0 / (0.004 * fs)),
+            cyc_oq: 0.0,
+            cyc_skew: 0.0,
+            cyc_sharp: 0.0,
+            cyc_set: false,
+            cycle_latch: false,
         }
     }
 
@@ -177,8 +192,17 @@ impl ParametricGlottis {
 
         // phase advance with per-cycle perturbations
         self.phase += (f0 / self.fs) / self.cycle_period_scale;
+        if !self.cyc_set || !self.cycle_latch {
+            self.cyc_set = true;
+            self.cyc_oq = p.open_quotient;
+            self.cyc_skew = p.skew;
+            self.cyc_sharp = p.closure_sharpness;
+        }
         if self.phase >= 1.0 {
             self.phase -= 1.0;
+            self.cyc_oq = p.open_quotient;
+            self.cyc_skew = p.skew;
+            self.cyc_sharp = p.closure_sharpness;
             self.cycle_index += 1;
             let alt = if self.cycle_index & 1 == 1 { 1.0 } else { -1.0 };
             let mut chaos_p = 0.0;
@@ -199,16 +223,16 @@ impl ParametricGlottis {
         }
 
         // pulse shape within the cycle
-        let mut oq = clamp(p.open_quotient - 0.18 * (p.effort - 0.5), 0.25, 0.98);
+        let mut oq = clamp(self.cyc_oq - 0.18 * (p.effort - 0.5), 0.25, 0.98);
         if p.fry > 0.0 {
             oq = oq * (1.0 - p.fry) + 0.28 * p.fry;
         }
-        let mut pulse = shape(self.phase, oq, p.skew, p.closure_sharpness);
+        let mut pulse = shape(self.phase, oq, self.cyc_skew, self.cyc_sharp);
         if p.fry > 0.3 {
             // second, weaker pulse shortly after the first (double pulsing typical of fry)
             let ph2 = self.phase - 0.38;
             if ph2 > 0.0 {
-                pulse += 0.55 * smoothstep(0.3, 0.8, p.fry) * shape(ph2, oq * 0.8, p.skew, p.closure_sharpness);
+                pulse += 0.55 * smoothstep(0.3, 0.8, p.fry) * shape(ph2, oq * 0.8, self.cyc_skew, self.cyc_sharp);
             }
         }
         let effort_scale = 0.45 + 0.75 * p.effort;

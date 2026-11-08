@@ -24,6 +24,13 @@ pub struct NoiseGains {
     pub dorsal_re: f64,
     /// how far downstream of the constriction the dorsal source enters (cm, body-scaled)
     pub dorsal_offset: f64,
+    /// the dorsal source fades out between 0.4× and 1× this area (cm², body-scaled): only a
+    /// fricative's narrowing sounds, not a vowel's or a glide's
+    pub dorsal_area: f64,
+    /// upper band edge (Hz) of the glottal aspiration source; injected as a pressure source just
+    /// above the glottis, its output spectrum tilts upward, so a lower edge keeps [h] and aspiration
+    /// in the vowel's formants rather than in a sibilant-like top band
+    pub glottis_lowpass: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -149,7 +156,7 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_area: 0.6, glottis_lowpass: 3500.0 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -278,7 +285,7 @@ impl HumanAirway {
         let mut list = core::mem::take(&mut self.noise_list);
         list.clear();
         // aspiration: jet from the glottis hits the epilarynx/ventricular region
-        list.push(NoiseSpec::new(self.glottis_port, self.branch_of(self.pharynx, 1), self.branch_of(self.trachea, self.trachea.n as isize - 2), g.glottis).band(3500.0, 300.0));
+        list.push(NoiseSpec::new(self.glottis_port, self.branch_of(self.pharynx, 1), self.branch_of(self.trachea, self.trachea.n as isize - 2), g.glottis).band(g.glottis_lowpass, 300.0));
         // narrowest open point in pharynx+oral (global position index p over concatenated tubes)
         let (n_ph, n_or) = (self.n_ph, self.n_or);
         let mut min_a = f64::INFINITY;
@@ -328,7 +335,7 @@ impl HumanAirway {
                 // meets the velum, uvula and the pharyngeal wall just downstream
                 if g.dorsal > 0.0 {
                     let w_back = smooth(3.5, 5.0, behind);
-                    let w_narrow = 1.0 - smooth(0.25 * k2, 0.6 * k2, min_a);
+                    let w_narrow = 1.0 - smooth(0.4 * g.dorsal_area * k2, g.dorsal_area * k2, min_a);
                     let wd = w_back * w_narrow;
                     if wd > 1e-3 {
                         let off2 = js_max(1.0, js_round((g.dorsal_offset * self.body.scale) / dx)) as isize;

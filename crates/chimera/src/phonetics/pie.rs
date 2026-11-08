@@ -99,6 +99,9 @@ pub struct PieOptions {
     /// a labialized consonant before a vowel releases through a [w] this long (s), taken from the
     /// vowel; 0 = off
     pub lab_glide: f64,
+    /// a palatal stop (ḱ ǵ ǵʰ) before a vowel releases through a [j] this long (s), taken from the vowel:
+    /// the palatalized release [kʲ] of the palatovelars; 0 = off
+    pub pal_glide: f64,
     /// voiceless stops: release lag (s) and glottal abduction
     pub vot: f64,
     pub asp_ab: f64,
@@ -108,10 +111,16 @@ pub struct PieOptions {
     pub mur_dip: f64,
     /// murmur source channel level (0..1): breathy voicing that keeps the folds vibrating
     pub mur_level: f64,
+    /// what full murmur does to the glottis (see HumanVoice::murmur_chink and friends)
+    pub mur_chink: f64,
+    pub mur_oq: f64,
     /// voiced stops: larynx height during the closure (cm, lower = voicing lasts), and strength;
     /// `None` leaves the larynx to the vowels
     pub vstop_larynx: Option<f64>,
     pub vstop_str: f64,
+    /// voiced stops: tongue root advance during the closure (cm; `None` leaves it): with the lowered larynx,
+    /// the other way speakers enlarge the cavity behind a closure so voicing lasts
+    pub vstop_root: Option<f64>,
     /// trill: contacts, minimum length (s), closed share of a cycle, tip height between contacts,
     /// articulator speed; `trill_n` 0 keeps the inventory's tap
     pub trill_n: u32,
@@ -157,6 +166,12 @@ pub struct PieOptions {
     pub dorsal_re: f64,
     /// how far downstream of the constriction the dorsal source enters (cm)
     pub dorsal_offset: f64,
+    /// the narrowing (cm²) above which the dorsal source has faded out (from 0.4× this)
+    pub dorsal_area: f64,
+    /// upper band edge (Hz) of the glottal aspiration noise (the engine's default 3500)
+    pub glottis_lowpass: f64,
+    /// multiplier on the glottal aspiration noise gain
+    pub glottis_noise: f64,
     /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
     pub syl_r_trill: u32,
     /// pause between phrases (s)
@@ -173,14 +188,18 @@ impl Default for PieOptions {
             lab_carry: 0.03,
             lab_lead: 0.02,
             lab_glide: 0.03,
+            pal_glide: 0.0,
             vot: 0.03,
             asp_ab: 0.28,
             mur_ab: 0.0,
             mur_dur: 0.06,
             mur_dip: 0.11,
             mur_level: 0.7,
+            mur_chink: 0.1,
+            mur_oq: 0.2,
             vstop_larynx: Some(-0.5),
             vstop_str: 3.0,
+            vstop_root: None,
             trill_n: 3,
             trill_min: 0.09,
             trill_close: 0.4,
@@ -203,6 +222,9 @@ impl Default for PieOptions {
             sibilant_lowpass: 5000.0,
             dorsal_re: 4500.0,
             dorsal_offset: 1.6,
+            dorsal_area: 0.6,
+            glottis_lowpass: 3500.0,
+            glottis_noise: 1.0,
             s_tip_fwd: 0.0,
             s_lip_prot: Some(-0.3),
             s_jaw: None,
@@ -443,7 +465,9 @@ fn engine_ipa<'a>(s: &'a PieSeg, p: &PieOptions) -> &'a str {
 
 /// Plan one phrase. Segments without a duration get [`default_durations`].
 pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
-    if p.lab_glide <= 0.0 || !segs_in.iter().any(|s| s.labial) {
+    let palatal = |s: &PieSeg| s.base == "c" || s.base == "ɟ";
+    let wants = |s: &PieSeg| (p.lab_glide > 0.0 && s.labial) || (p.pal_glide > 0.0 && palatal(s));
+    if !segs_in.iter().any(wants) {
         return plan_core(segs_in, &[], question, o, p);
     }
     // a labialized consonant releases into its vowel through a rounded transition: plan it as a
@@ -452,6 +476,7 @@ pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p
     let defaults = default_durations(segs_in);
     let mut segs: Vec<PieSeg> = Vec::with_capacity(segs_in.len() + 4);
     let mut glides: Vec<usize> = Vec::new();
+    let mut folds: Vec<usize> = Vec::new();
     let mut take_next = 0.0;
     for (i, s) in segs_in.iter().enumerate() {
         let mut s2 = s.clone();
@@ -459,16 +484,22 @@ pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p
         take_next = 0.0;
         segs.push(s2);
         if let Some(next) = segs_in.get(i + 1) {
-            if s.labial && !s.word_end && next.is_nucleus() {
-                let g = p.lab_glide.min(0.4 * next.dur.unwrap_or(defaults[i + 1]));
-                glides.push(segs.len());
-                segs.push(PieSeg { base: "w".into(), dur: Some(g), ..Default::default() });
-                take_next = g;
+            if !s.word_end && next.is_nucleus() {
+                let (base, len) = if s.labial { ("w", p.lab_glide) } else if palatal(s) { ("j", p.pal_glide) } else { ("", 0.0) };
+                if len > 0.0 {
+                    let g = len.min(0.4 * next.dur.unwrap_or(defaults[i + 1]));
+                    if base == "w" {
+                        glides.push(segs.len());
+                    }
+                    folds.push(segs.len());
+                    segs.push(PieSeg { base: base.into(), dur: Some(g), ..Default::default() });
+                    take_next = g;
+                }
             }
         }
     }
     let mut plan = plan_core(&segs, &glides, question, o, p);
-    for &k in glides.iter().rev() {
+    for &k in folds.iter().rev() {
         let t1 = plan.segments[k].t1;
         plan.segments[k - 1].t1 = t1;
         plan.segments.remove(k);
@@ -655,8 +686,15 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             plan.gestures.push(Gesture::new(t0 - p.lab_lead, t1 + p.lab_carry, 0.03, 0.03, p.lab_str, tg).label("ʷ"));
         }
         if is_voiced_stop(&s.base) {
+            let mut tg = Targets::default();
             if let Some(y) = p.vstop_larynx {
-                plan.gestures.push(Gesture::new(t0 - 0.01, t1 - 0.005, 0.02, 0.02, p.vstop_str, Targets::default().with(ArticKey::Larynx, y)).label("voice bar"));
+                tg.set(ArticKey::Larynx, y);
+            }
+            if let Some(r) = p.vstop_root {
+                tg.set(ArticKey::Root, r);
+            }
+            if !tg.is_empty() {
+                plan.gestures.push(Gesture::new(t0 - 0.01, t1 - 0.005, 0.02, 0.02, p.vstop_str, tg).label("voice bar"));
             }
         }
         if s.breathy {
@@ -687,6 +725,11 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     v.airway.noise_gain.teeth_lowpass = p.sibilant_lowpass;
     v.airway.noise_gain.dorsal_re = p.dorsal_re;
     v.airway.noise_gain.dorsal_offset = p.dorsal_offset;
+    v.airway.noise_gain.dorsal_area = p.dorsal_area;
+    v.airway.noise_gain.glottis_lowpass = p.glottis_lowpass;
+    v.airway.noise_gain.glottis *= p.glottis_noise;
+    v.murmur_chink = p.mur_chink;
+    v.murmur_oq = p.mur_oq;
 }
 
 /// Plan PIE text (see [`parse_pie`]), phrase after phrase from `o.t0`.

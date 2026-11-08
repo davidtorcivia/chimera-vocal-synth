@@ -23,6 +23,13 @@ fn main() {
     chimera::init();
     let mut v = HumanVoice::new(48000.0, body, 2);
     setup_voice(&mut v, f0, &p);
+    if let Ok(x) = std::env::var("NG_GLOTTIS") {
+        v.airway.noise_gain.glottis *= x.parse::<f64>().unwrap();
+    }
+    if let Ok(x) = std::env::var("NG_CONSTR") {
+        v.airway.noise_gain.constriction *= x.parse::<f64>().unwrap();
+    }
+    let mut whole: Vec<f32> = Vec::new();
     let plan = plan_pie(text, &PlanOptions { body: body_name.into(), t0: 0.05, f0: Some(f0), ..Default::default() }, &p);
     for s in &plan.segments {
         print!("{}@{:.3} ", s.ipa, s.t0);
@@ -34,6 +41,7 @@ fn main() {
     let mut ti = 0;
     while ti < times.len() {
         v.render(&mut buf);
+        whole.extend_from_slice(&buf);
         t += 128.0 / 48000.0;
         if t >= times[ti] {
             let air = &v.airway;
@@ -53,5 +61,29 @@ fn main() {
             }
             ti += 1;
         }
+    }
+    if let Ok(path) = std::env::var("WAV") {
+        // keep rendering to the end of the plan, then write 32-bit float
+        while t < plan.end + 0.3 {
+            v.render(&mut buf);
+            whole.extend_from_slice(&buf);
+            t += 128.0 / 48000.0;
+        }
+        let n = whole.len() as u32;
+        let mut w = Vec::new();
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + n * 4).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        for x in [16u32] { w.extend_from_slice(&x.to_le_bytes()); }
+        w.extend_from_slice(&3u16.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes());
+        w.extend_from_slice(&48000u32.to_le_bytes());
+        w.extend_from_slice(&(48000u32 * 4).to_le_bytes());
+        w.extend_from_slice(&4u16.to_le_bytes());
+        w.extend_from_slice(&32u16.to_le_bytes());
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&(n * 4).to_le_bytes());
+        for x in &whole { w.extend_from_slice(&x.to_le_bytes()); }
+        std::fs::write(path, w).unwrap();
     }
 }

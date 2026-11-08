@@ -192,6 +192,11 @@ pub struct HumanVoice {
     base_chink: f64,
     base_oq: f64,
     base_sharp: f64,
+    /// what a full murmur (channel value 1) does: posterior gap added (cm², body-scaled), open quotient
+    /// added, share of the closure sharpness removed
+    pub murmur_chink: f64,
+    pub murmur_oq: f64,
+    pub murmur_soften: f64,
     base_closure: f64,
     score_f0: Option<f64>,
     lim_env: f64,
@@ -214,7 +219,11 @@ impl HumanVoice {
             m,
             fs,
             airway,
-            glottis: crate::sources::glottis::ParametricGlottis::new(fs),
+            glottis: {
+                let mut g = crate::sources::glottis::ParametricGlottis::new(fs);
+                g.cycle_latch = true;
+                g
+            },
             artic: ArticulatorBank::new(),
             source: DEFAULT_SOURCE,
             dec: Decimator::new(m),
@@ -250,6 +259,9 @@ impl HumanVoice {
             base_chink: 0.0,
             base_oq: 0.0,
             base_sharp: 0.0,
+            murmur_chink: 0.1,
+            murmur_oq: 0.2,
+            murmur_soften: 0.8,
             base_closure: 0.0,
             score_f0: None,
             lim_env: 0.0,
@@ -454,9 +466,9 @@ impl HumanVoice {
             // softens, so H1 rises over H2 and aspiration noise rides on the voicing.
             let mu = b[ControlKey::MURMUR.index()];
             let m = if mu.weight > 0.0 { clamp(mu.value, 0.0, 1.0) * js_min(1.0, mu.weight / 2.0) } else { 0.0 };
-            gp.chink = self.base_chink + 0.1 * m * k2;
-            gp.open_quotient = js_min(0.95, self.base_oq + 0.2 * m);
-            gp.closure_sharpness = self.base_sharp * (1.0 - 0.8 * m);
+            gp.chink = self.base_chink + self.murmur_chink * m * k2;
+            gp.open_quotient = js_min(0.95, self.base_oq + self.murmur_oq * m);
+            gp.closure_sharpness = self.base_sharp * (1.0 - self.murmur_soften * m);
             let cl = b[ControlKey::CLOSURE.index()];
             gp.closure = js_max(self.base_closure, if cl.weight > 0.0 { cl.value * js_min(1.0, cl.weight / 2.0) } else { 0.0 });
             let br = b[ControlKey::BREATH.index()];
