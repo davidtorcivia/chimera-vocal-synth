@@ -266,7 +266,7 @@ impl Default for PieOptions {
             devoice_str_stop: 1.5,
             devoice_early: 0.015,
             devoice_ramp_in: 0.0,
-            devoice_early_fric: 0.007,
+            devoice_early_fric: 0.015,
             mur_ab: 0.0,
             mur_dur: 0.06,
             mur_dip: 0.11,
