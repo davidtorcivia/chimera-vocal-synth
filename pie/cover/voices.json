@@ -1,0 +1,104 @@
+[
+ {
+  "name": "JD3-PIE",
+  "voice_id": "d0grukerEzs069eKIauC",
+  "gender": "male",
+  "lang": "current"
+ },
+ {
+  "name": "JD3-PIE-b",
+  "voice_id": "d0grukerEzs069eKIauC",
+  "gender": "male",
+  "lang": "current"
+ },
+ {
+  "name": "W02-PIE",
+  "voice_id": "f1abxvIEijusskcPWE5x",
+  "gender": "female",
+  "lang": "current"
+ },
+ {
+  "name": "W02-PIE-b",
+  "voice_id": "f1abxvIEijusskcPWE5x",
+  "gender": "female",
+  "lang": "current"
+ },
+ {
+  "name": "hi-Viraj",
+  "voice_id": "P1bg08DkjqiVEzOn76yG",
+  "gender": "male",
+  "lang": "hi"
+ },
+ {
+  "name": "mr-Tukaram",
+  "voice_id": "CXkeo30p0Sk4Lr0TAzeo",
+  "gender": "male",
+  "lang": "mr"
+ },
+ {
+  "name": "es-Antonio",
+  "voice_id": "htFfPSZGJwjBv1CL0aMD",
+  "gender": "male",
+  "lang": "es"
+ },
+ {
+  "name": "it-Carmelo",
+  "voice_id": "HuK8QKF35exsCh2e7fLT",
+  "gender": "male",
+  "lang": "it"
+ },
+ {
+  "name": "cs-Zazy",
+  "voice_id": "U48DQ1c9SVmD2BVCSiHL",
+  "gender": "male",
+  "lang": "cs"
+ },
+ {
+  "name": "de-Tristan",
+  "voice_id": "sx7WD8TJIOrk5RQOptDH",
+  "gender": "male",
+  "lang": "de"
+ },
+ {
+  "name": "hi-Anjali",
+  "voice_id": "gHu9GtaHOXcSqFTK06ux",
+  "gender": "female",
+  "lang": "hi"
+ },
+ {
+  "name": "mr-Kalyani",
+  "voice_id": "UN3inGyhBayPW0A8lscL",
+  "gender": "female",
+  "lang": "mr"
+ },
+ {
+  "name": "es-Sandra",
+  "voice_id": "rEVYTKPqwSMhytFPayIb",
+  "gender": "female",
+  "lang": "es"
+ },
+ {
+  "name": "it-Linda",
+  "voice_id": "3DPhHWXDY263XJ1d2EPN",
+  "gender": "female",
+  "lang": "it"
+ },
+ {
+  "name": "cs-Hanka",
+  "voice_id": "12CHcREbuPdJY02VY7zT",
+  "gender": "female",
+  "lang": "cs"
+ },
+ {
+  "name": "el-Jane",
+  "voice_id": "RILOU7YmBhvwJGDGjNmP",
+  "gender": "female",
+  "lang": "el"
+ },
+ {
+  "name": "hr-Ivana",
+  "voice_id": "jEKeTj7nqDtk1QSNwXkO",
+  "gender": "female",
+  "lang": "hr"
+ }
+]

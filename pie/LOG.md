@@ -83,3 +83,10 @@ Credits overnight: 9,540 of 12,000.
 Final full render (dcc37da, ~/AI/chimera-pie-data/full/chimera-v2, 4,238 clips, 0 errors): gate without the
 post-restore h/χ floors 3,225 / 4,238 pass (first u fix 3,361; before it about 2,700): voicing 408, weak vowels 665
 (the midpoint u trades a little loudness for a back u). Earlier renders kept as chimera-v2-b5b60d7 and -6f1aa07.
+
+Voice test (2026-11-08, `pie/voicetest.py`, passage in `pie/cover/`: 41 corpus words, every sound ≥ 4×, 24.7 s;
+5,083 credits). Converted misses: current JD3 33.3 / 40.4 (two runs), W02 42.1 / 39.9; candidates male 32.5-39.9,
+female 36.8-39.5 — all inside the repeat spread. Murmur 17-19 / 21 missed in every voice. Converted noise floor:
+hr-Ivana −64, es-Sandra −62, W02 −46 dB; cs-Hanka 8.9 kHz and el-Jane 12.4 kHz band (dull); de-Tristan −30 dB
+(noisy). Best-of-two conversions: 34.4 → 31.1 % when chosen and scored on the same sounds, ±0.9 when chosen on
+half and scored on the other half — no real gain.

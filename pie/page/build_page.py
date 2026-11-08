@@ -88,6 +88,15 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
     <p>We forked Chimera, an open physical model of the human airway, and taught its engine Proto-Indo-European: labiovelars, murmured stops, trills, the laryngeals and the pitch accent. Then we put its renders through the same speech-to-speech conversion as our corpus. Every comparison below uses the same words on the same timing; switch versions while it plays and you stay in place.</p>
   </header>
 
+  <section id="voices">
+    <div class="eyebrow">voice test · 8 November</div>
+    <h2>Which voice to convert into</h2>
+    <p class="hint">One 25-second passage of real PIE words, every PIE sound at least four times, rendered by Chimera and converted into 15 voices from the voice library (screened from 243 for a clean noise floor, no hum and full bandwidth) and into our two current voices twice. Lower misses are better; the two runs of each current voice show how much the voice changer alone varies (2–7 points), and every candidate lands inside that spread. Noise is the converted audio's floor (lower is cleaner), band the highest frequency within 50 dB of the peak.</p>
+    <p class="hint" style="font-style:italic">ɟn̩hjóːntor clusəjónti χánkulaχm ‖ χwĺ̩hnaχm tcitáːm pədʱí ɡʷʱn̩dʱí dl̩hɡʱóm ‖ bʱérɟʱm̩ ɣʷréɟm̩ dəpnój ɡʷr̩ɣʷó dóɣʷr̩ ‖ …</p>
+    <div id="vt" style="display:grid;gap:12px"></div>
+    <div class="tablebox"><table id="vt-table"></table></div>
+  </section>
+
   <section id="lab">
     <div class="eyebrow">overnight lab notebook · newest first</div>
     <h2>Conversion tests</h2>
@@ -226,6 +235,19 @@ function Player(host, versions, head) {
   return P;
 }
 
+// ---- the voice test
+const VT = __VT__;
+{
+  const host = document.getElementById('vt');
+  for (const [g, title] of [['male', 'Male voices'], ['female', 'Female voices']]) {
+    const el = document.createElement('div'); el.className = 'player'; host.append(el);
+    const vs = VT.filter(v => v.gender === g).sort((a, b) => a.miss - b.miss);
+    Player(el, [{ label: 'Chimera source', src: `v/raw-${g}.mp3`, cls: 'v' }].concat(vs.map(v => ({ label: v.label, src: `v/${v.name}.mp3`, cls: 'c' }))), `<div><h3>${title}</h3></div>`);
+  }
+  document.getElementById('vt-table').innerHTML = '<thead><tr><th>Voice</th><th>Misses</th><th>Murmured missed (of 21)</th><th>Noise</th><th>Band</th></tr></thead><tbody>' +
+    VT.slice().sort((a, b) => a.gender.localeCompare(b.gender) || a.miss - b.miss).map(v => `<tr><td>${v.label} <span class="eyebrow">${v.gender}</span></td><td class="n">${v.miss}%</td><td class="n">${v.murmur}</td><td class="n">${v.noise} dB</td><td class="n">${(v.band / 1000).toFixed(1)} kHz</td></tr>`).join('') + '</tbody>';
+}
+
 // ---- the overnight lab
 const LAB = __LAB__;
 document.getElementById('lab-budget').textContent = `Credits used overnight: ${LAB.spent.toLocaleString()} of ${LAB.budget.toLocaleString()}`;
@@ -357,6 +379,7 @@ for (const [id, ex, note] of SOUNDS) {
 }
 </script>
 '''
+html = html.replace('__VT__', '[{"name": "JD3-PIE", "label": "current (JD3)", "gender": "male", "miss": 33.3, "noise": -49.8, "band": 14550, "air": -21.6, "murmur": 18}, {"name": "JD3-PIE-b", "label": "current, again", "gender": "male", "miss": 40.4, "noise": -50.8, "band": 14550, "air": -20.9, "murmur": 18}, {"name": "W02-PIE", "label": "current (W02)", "gender": "female", "miss": 42.1, "noise": -46.2, "band": 15600, "air": -18.3, "murmur": 19}, {"name": "W02-PIE-b", "label": "current, again", "gender": "female", "miss": 39.9, "noise": -46.0, "band": 15450, "air": -18.3, "murmur": 18}, {"name": "hi-Viraj", "label": "Hindi · Viraj", "gender": "male", "miss": 34.2, "noise": -49.8, "band": 14650, "air": -16.4, "murmur": 18}, {"name": "mr-Tukaram", "label": "Marathi · Tukaram", "gender": "male", "miss": 38.2, "noise": -46.2, "band": 13850, "air": -17.8, "murmur": 18}, {"name": "es-Antonio", "label": "Spanish · Antonio", "gender": "male", "miss": 33.3, "noise": -45.9, "band": 14700, "air": -22.4, "murmur": 17}, {"name": "it-Carmelo", "label": "Italian · Carmelo", "gender": "male", "miss": 32.5, "noise": -50.0, "band": 15550, "air": -15.3, "murmur": 18}, {"name": "cs-Zazy", "label": "Czech · Zazy", "gender": "male", "miss": 37.3, "noise": -49.4, "band": 15100, "air": -18.1, "murmur": 18}, {"name": "de-Tristan", "label": "German · Tristan", "gender": "male", "miss": 39.9, "noise": -29.8, "band": 15150, "air": -19.5, "murmur": 19}, {"name": "hi-Anjali", "label": "Hindi · Anjali", "gender": "female", "miss": 36.8, "noise": -55.6, "band": 15350, "air": -21.5, "murmur": 18}, {"name": "mr-Kalyani", "label": "Marathi · Kalyani", "gender": "female", "miss": 39.0, "noise": -49.6, "band": 14650, "air": -22.0, "murmur": 18}, {"name": "es-Sandra", "label": "Spanish · Sandra", "gender": "female", "miss": 39.0, "noise": -61.9, "band": 15150, "air": -24.1, "murmur": 18}, {"name": "it-Linda", "label": "Italian · Linda", "gender": "female", "miss": 39.5, "noise": -52.0, "band": 14750, "air": -19.7, "murmur": 18}, {"name": "cs-Hanka", "label": "Czech · Hanka", "gender": "female", "miss": 39.5, "noise": -61.1, "band": 8850, "air": -31.9, "murmur": 18}, {"name": "el-Jane", "label": "Greek · Jane", "gender": "female", "miss": 39.9, "noise": -49.1, "band": 12400, "air": -29.0, "murmur": 17}, {"name": "hr-Ivana", "label": "Croatian · Ivana", "gender": "female", "miss": 37.7, "noise": -64.3, "band": 13900, "air": -19.8, "murmur": 18}]')
 html = html.replace('__LAB__', open('lab-data.json').read())
 html = html.replace('__PILOT__', json.dumps(pilot, ensure_ascii=False))
 open('page/index.html', 'w').write(html)

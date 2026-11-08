@@ -1,6 +1,6 @@
 {
- "credits_budget": 12000,
- "other_credits": 4794,
+ "credits_budget": 20500,
+ "other_credits": 9906,
  "tests": [
   {
    "name": "vtl",
@@ -129,6 +129,10 @@
   {
    "t": "2026-11-08 02:30",
    "text": "An open decision for you: the corpus QC gate has brightness floors for h and χ. VTL's raw renders pass them (h median 0.84 of its energy in 2-8 kHz, χ 0.57); Chimera's h is far darker (about 0.2-0.4) because I darkened it earlier to stop the recognizer hearing h as s. A brighter h (breath band to 2 kHz) moves it into the documented range (0.52) with h recognized just as well, but costs 0.4 points on the neighbouring vowels. Converted h is mostly lost either way (VTL's too); your restoration stage re-lays it. I left h as is: accuracy first."
+  },
+  {
+   "t": "2026-11-08 09:22",
+   "text": "Voice test (5,083 credits): a 25-second passage of 41 real PIE words with every sound at least four times, converted into 15 library voices (Hindi, Marathi, Spanish, Italian, Czech, German, Greek, Croatian; screened from 243 by preview quality) and twice into each current voice. The current voices' two runs differ by 2-7 points, and all candidates fall inside that spread: no voice is measurably more accurate, and none keeps the murmured stops (17-19 of 21 missed everywhere, native Hindi and Marathi voices included). Audio quality differs: Croatian Ivana and Spanish Sandra convert with a much cleaner noise floor (-64 and -62 dB against -46 for W02); Czech Hanka and Greek Jane are dull (8.9 and 12.4 kHz); German Tristan is noisy. Converting each clip twice and keeping the better looked like a 3-point gain, but choosing on half the sounds and scoring the other half shows none: the differences are scattered sound by sound."
   }
  ]
 }
