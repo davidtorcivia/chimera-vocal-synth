@@ -14,7 +14,7 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-08 | trill gets 110 ms (from its neighbours) instead of 90: r 44 → 27 % missed | 29.4 % | 29.7 % | |
 | 2026-11-08 | velum lowers 20 ms before a nasal over 20 ms (was 70 ms, English-like) | 28.6 % | 29.3 % | |
 | 2026-11-08 | the [w] glide after kʷ gʷ 10 ms instead of 30 (kʷ 24 → 13 % on a kʷe set) | 28.3 % | 28.4 % | |
-| 2026-11-08 | dark l: l gets its own tongue body (back, lowered; it had none) — l 48 → 8 %, l̩ 59 → 35 % | 27.7 % | 27.6 % | |
+| 2026-11-08 | dark l: l gets its own tongue body (back, lowered; it had none) — l 48 → 8 %, l̩ 59 → 35 % | 27.7 % | 27.6 % | 27.4 → 33.8 % (pilot 3, 1,110 credits) |
 
 Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
 36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %
@@ -53,3 +53,8 @@ weaker voice bar for d (d before a consonant is heard as n; no setting helped, a
 stronger or longer murmur (heard less, not more). An apparent leak in t/d closures was the debug print, not the
 airway: mouth pressure equals lung pressure and nothing flows. Tools: `piedebug` PIE_GESTURES=t0,t1 lists active
 gestures; the `pie` example takes f.key=value / m.key=value for one voice only.
+
+Dawn hymn, night engine (whole-transcription): male raw 33 / converted 39 %, female 43 / 44 % (evening 37 / 41,
+43 / 46). Pilot 3 after conversion per sound vs pilot 2: χ 63 → 40, s 38 → 28, o 19 → 5, t 36 → 24, d 40 → 20 %
+better; r 50 → 50 (the converter flattens the better trill), m 13 → 32, i 25 → 42, u 29 → 36, w 44 → 53 % worse
+(14-40 instances each).

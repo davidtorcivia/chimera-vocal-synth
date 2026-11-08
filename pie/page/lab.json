@@ -1,6 +1,6 @@
 {
  "credits_budget": 12000,
- "other_credits": 1282,
+ "other_credits": 3038,
  "tests": [
   {
    "name": "vtl",
@@ -79,6 +79,30 @@
   {
    "t": "2026-11-07 23:55",
    "text": "The χ fix converted a second time scores 33.5% after conversion, not 31.7%: the first run was a lucky draw. With 12 sentences the voice changer alone moves the result by about 1-2 points, so the bright voice (33.8%) and the louder s and χ (33.5%) are ties with the χ fix, not losses. What these tests reliably catch is a large loss like the old χ (36-36.5% against 32.6% on average). From here, small changes are judged raw on the dev and held-out sets (162 sentences each); conversions are kept for changes that are ready, about 680 credits a test."
+  },
+  {
+   "t": "2026-11-08 ~00:05",
+   "text": "Which sounds can the recognizer hear in real people at all? On recorded words from 95 languages it hears palatal stops 5-8% of the time, murmured stops 2 of 9, ə 17%, χ 48%, j 50%, w 57%, h 65%, r 89%. Our j, w, ə and χ are already at or above people's rate; r was far below (61%), so r was next."
+  },
+  {
+   "t": "2026-11-08 ~00:20",
+   "text": "The trill: in coda and between vowels the corpus gives r only 28 ms (VocalTractLab's tap), too short for contacts; the engine already borrowed time from the neighbours up to 90 ms. At 110 ms r is missed 27% instead of 44% (held-out), and the whole held-out score goes from 30.2% to 29.7%. Adopted."
+  },
+  {
+   "t": "2026-11-08 ~00:35",
+   "text": "Nasals: the velum started opening 70 ms before every nasal, the English habit, so the vowel before it was nasal and heard higher (e as i). Opening 20 ms ahead over 20 ms: held-out 29.3%; syllabic n and m gain most. Adopted. A female-only vowel and tongue-tip retune did nothing measurable; the female voice's 3-point gap is the recognizer's (VocalTractLab's female shows it too)."
+  },
+  {
+   "t": "2026-11-08 ~00:45",
+   "text": "Labiovelars: the [w] glide after kʷ gʷ cut from 30 to 10 ms; kʷ is still heard as kʷ (or k + w) and the following vowel, usually the e of -kʷe, keeps its own space. Held-out 28.4%. Adopted. Chased what looked like leaky t and d closures; it was my debug readout, not the airway (mouth pressure equals lung pressure and no air flows)."
+  },
+  {
+   "t": "2026-11-08 ~00:55",
+   "text": "Dark l: l had no tongue-body target at all, so it took whatever its neighbours left. A back, lowered body (a dark, velarized l, the usual syllabic lateral): l missed 8% instead of 48%, syllabic l 35% instead of 59%. Held-out 27.6%. Adopted. The same idea for r made the neighbouring vowels worse, so not kept."
+  },
+  {
+   "t": "2026-11-08 01:05",
+   "text": "Checkpoint conversion (1,756 credits): the 24 pilot sentences and the whole dawn hymn with tonight's engine. Pilot: raw 27.4% (evening 32.4%), converted 33.8% (evening 35.6%, VTL 56.5%). Hymn converted: male 39% (41%), female 44% (46%). What the converter keeps: χ, s, o, t, d better; what it does not: the trill is much better raw but flattened again after conversion, and m, i, u, w look worse though each has only 14-40 instances. Next: whether the converter wants some vowel nasality to rebuild m and n."
   }
  ]
 }
