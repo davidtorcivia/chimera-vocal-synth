@@ -24,6 +24,17 @@ Consistent losses in every voice: kʷ +16-22 points, k +15-19, j +7-15, w +7-16,
 female only: s +12-16 (11 → 23-27 %), u +12-17 (23 → 35-40 %), n +4-5. Consistent gains: χ −22 to −30, d −10 to −13,
 t −6 to −10, ə −8 to −12, h −3 to −5, gʷ (female) −8 to −12.
 
+## Acoustic map (Phase 0, `pie/acoustic_map.py`, 300 clips per voice, source → converted; `pie/cover/acoustic-map.json`)
+Survives: male murmur (H1*-H2* over modal +7 → +8/+9 dB), h (level kept, brightness 0.2-0.4 → 0.43-0.64),
+χ (improved), Zazy's trill (2+ contacts 56 → 65 %), VOT (10-20 ms).
+Damaged: stop bursts 3-8 dB weaker in every voice (→ k p kʷ misheard); female s slides toward ʃ (centroid 6.0 kHz
+Valeria, 4.9 W02; heard ʃ 1,435× in Valeria); kʷ rounding transition halved (F2 rise 700-970 → 380-800 Hz);
+trill flattened in Antonio, Valeria, W02 (no contact in ~40 % of r); female murmur weak in the source (+2 dB) and
+lost in Valeria (−2); e F2 falls 50-190 Hz. LTAS: W02 thin below 500 Hz, Antonio dull at 6-8 kHz.
+QC voicing: two-thirds of Zazy's flags are creaky-but-voiced vowels (meter too strict), a third whispered short ə.
+Order: bursts (EQ), female s (EQ), kʷ transition (resynthesis), trill and female murmur, e. Engine note: the
+female voice's murmur is too weak (+2 dB vs +7 male).
+
 ## Phases
 0. Measure: the damage map for all four voices, plus acoustic measures per span — murmur H1*-H2*/CPP, trill
    contacts, h and χ band energy, VOT and burst energy for p t k, F2 transitions for kʷ gʷ w j, vowel formants,
