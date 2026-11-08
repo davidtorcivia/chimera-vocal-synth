@@ -60,7 +60,12 @@ def measure(x, sr):
             nb = Q[((fq > h - 15) & (fq < h - 5)) | ((fq > h + 5) & (fq < h + 15))].mean()
             vals.append(10 * np.log10(band_ / (nb + 1e-20) + 1e-20))
         hum = float(max(vals))
-    return {"noise_db": round(float(lo - hi), 1), "hum_db": round(hum, 1), "band_hz": round(band), "air_db": round(float(air), 1)}
+    # body and detail against the main speech band (the owner's "thin": a weak low end or a dull top)
+    ref = e(1000, 4000) + 1e-20
+    low = 10 * np.log10(e(80, 250) / ref + 1e-20)
+    top = 10 * np.log10(e(8000, 12000) / ref + 1e-20)
+    return {"noise_db": round(float(lo - hi), 1), "hum_db": round(hum, 1), "band_hz": round(band), "air_db": round(float(air), 1),
+            "low_db": round(float(low), 1), "top_db": round(float(top), 1)}
 
 
 def main():
@@ -68,13 +73,15 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--per", type=int, default=12)
     ap.add_argument("--langs", default="hi,mr,es,it,sr,hr,cs,de,nl,ar,lt,el")
+    ap.add_argument("--genders", default="male,female")
+    ap.add_argument("--file", default="voices.jsonl")
     a = ap.parse_args()
     out = Path(a.out)
     (out / "previews").mkdir(parents=True, exist_ok=True)
     seen = set()
-    with open(out / "voices.jsonl", "w", encoding="utf-8") as fo:
+    with open(out / a.file, "w", encoding="utf-8") as fo:
         for lang in a.langs.split(","):
-            for gender in ("male", "female"):
+            for gender in a.genders.split(","):
                 try:
                     d = api({"page_size": 60, "language": lang, "gender": gender, "category": "professional", "sort": "cloned_by_count"})
                 except Exception as e:

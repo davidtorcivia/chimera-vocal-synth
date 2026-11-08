@@ -36,7 +36,7 @@ def main():
         out = page / "c" / n
         out.mkdir(parents=True, exist_ok=True)
         for s in stems:
-            for kind, src in (("raw", rd), ("conv", cd)):
+            for kind, src in ((("conv", cd),) if t.get("no_raw") else (("raw", rd), ("conv", cd))):
                 mp3 = out / f"{s}-{kind}.mp3"
                 if not mp3.exists():
                     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(src / f"{s}.wav"), "-af",
@@ -44,7 +44,7 @@ def main():
         R = json.load(open(DATA / "runs" / rr / "gop.json"))["rows"]
         C = json.load(open(DATA / "runs" / cr / "gop.json"))["rows"]
         ph = lambda rows, p: miss([r for r in rows if r["key"] == p])
-        tests.append({"name": n, "raw_of": t.get("raw_of", n), "label": t["label"], "what": t["what"], "credits": t["credits"],
+        tests.append({"name": n, "raw_of": t.get("raw_of", n), "no_raw": t.get("no_raw", False), "label": t["label"], "what": t["what"], "credits": t["credits"],
                       "raw": miss(R), "conv": miss(C), "chi": ph(C, "χ"), "s": ph(C, "s"), "h": ph(C, "h")})
         for x in sents:
             x["px"][n] = [miss([r for r in R if r["file"] == x["id"]]), miss([r for r in C if r["file"] == x["id"]])]

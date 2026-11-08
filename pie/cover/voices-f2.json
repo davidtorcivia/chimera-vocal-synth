@@ -1,0 +1,50 @@
+[
+ {
+  "name": "pl-Beata",
+  "voice_id": "W0sqKm1Sfw1EzlCH14FQ",
+  "gender": "female",
+  "lang": "pl"
+ },
+ {
+  "name": "de-Julia",
+  "voice_id": "KbSC2XTZL12xT3fm2fcD",
+  "gender": "female",
+  "lang": "de"
+ },
+ {
+  "name": "de-Rebecca",
+  "voice_id": "oNs4CSS4LR7hEoEykuS5",
+  "gender": "female",
+  "lang": "de"
+ },
+ {
+  "name": "es-Valeria",
+  "voice_id": "JddqVF50ZSIR7SRbJE6u",
+  "gender": "female",
+  "lang": "es"
+ },
+ {
+  "name": "es-SaraMartin",
+  "voice_id": "KHCvMklQZZo0O30ERnVn",
+  "gender": "female",
+  "lang": "es"
+ },
+ {
+  "name": "hi-Meher",
+  "voice_id": "lfQ3pGxnwOiKjnQKdwts",
+  "gender": "female",
+  "lang": "hi"
+ },
+ {
+  "name": "mr-Purna",
+  "voice_id": "7yKx2hbGRNzuYNig8RR7",
+  "gender": "female",
+  "lang": "mr"
+ },
+ {
+  "name": "ar-Salma",
+  "voice_id": "B5xxC4eQoOFJnY4R5XkI",
+  "gender": "female",
+  "lang": "ar"
+ }
+]

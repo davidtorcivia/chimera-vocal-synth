@@ -94,3 +94,9 @@ half and scored on the other half — no real gain.
 Owner's choice by ear (2026-11-08): male voice Czech Zazy (U48DQ1c9SVmD2BVCSiHL) first, then Spanish Antonio, then
 Italian Carmelo ("sounds the most native, less like it's wearing a suit"); female stays W02-PIE (every library
 female sounds too thin; W02 has the best mic and voice quality).
+
+Zazy confirmation (555 credits): the 12 male pilot sentences (pilot-4 renders) converted into Zazy miss 26.4 %,
+JD3 30.0 / 31.2 % on the same renders. Female pass 2 (2,392 credits): 1,001 professional female previews in 40
+languages screened for body (80-250 Hz ≥ 0 dB vs 1-4 kHz) and detail (8-12 kHz −16 to −8 dB); 8 converted.
+Converted: mr-Purna low +7.0 / top −14.6 dB / 15.6 kHz / −50 dB noise (W02: −1.0 / −16.2 / 15.6 / −46); es-Valeria
++3.8 / −18.4 / 14.5 kHz / −58.5; the rest lose the top above 11-12.5 kHz. Misses 36.8-42.5 % (W02 39.9-42.1).
