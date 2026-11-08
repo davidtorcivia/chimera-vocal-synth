@@ -556,3 +556,15 @@ def fix_murmur_noise(x, sr, ph, noise_db=-15.0, h1_db=3.0, tilt_db=3.0, seed=0, 
     k = np.hanning(5); k /= k.sum()
     G = np.apply_along_axis(lambda c: np.convolve(c, k, mode="same"), 0, G)
     return _istft(X * 10 ** (G / 20), len(y), n, hop, w)
+
+
+def fix_vowel_f2(x, sr, ph, vowel="e", factor=1.05, male=True):
+    """Raise (factor > 1) F2 over each `vowel` span by a fixed factor, LPC domain with the residual kept, ramped in and
+    out over 15 ms at the vowel's edges."""
+    order = 12 if male else 10
+    for p in ph:
+        if p["b"] == vowel and p["t1"] - p["t0"] > 0.04:
+            a, b = p["t0"], p["t1"]
+            fn = lambda t, a=a, b=b: 1 + (factor - 1) * float(np.clip(min(t - a, b - t) / 0.015, 0, 1))
+            x = lpc_formant_edit(x, sr, a, b, fn, order, which=(1,))
+    return x

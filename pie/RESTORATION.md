@@ -110,3 +110,10 @@ Step 6 (female murmur, `fix_murmur_noise`, on steps 1-4): LPC-shaped, pitch-sync
 plain): +5.2 → +6.3 / +6.4 dB, CPPS difference −1.8 → −1.8 / −2.2 (noise −15 / −10 dB), UTMOS −0.02; W02 already
 +11.7 → +12.8. Valeria's murmur was weaker, not lost: the Phase-0 "lost" came from the Iseli-Alwan artefact.
 On the lab page for the owner.
+
+Step 6 decided (owner): noise −10 dB for Valeria and W02.
+Step 7 (e, `fix_vowel_f2`: F2 raised over each e by the voice's measured shortfall — Zazy ×1.050, Antonio ×1.024,
+Valeria ×1.009, W02 ×1.086 — or half of it): e misses Zazy 6 → 5/9 of 76, Antonio 13 → 12/12 of 65, Valeria 15 → 15/14 of
+76, W02 21 → 17/15 of 72, but W02's i 3 → 6 and overall 32.9 → 35.0/35.6 %; UTMOS ±0.02. Recommendation: skip; e
+waits for the local converter with kʷ.
+Pilot chain (post only): full EQ → strong s (female) → half-fill bursts → re-trill → breathy release −10 dB (female).
