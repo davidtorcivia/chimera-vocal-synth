@@ -108,3 +108,23 @@ fn breath_colour_darkens_h_only() {
     let (t0, t1) = (brightness(&plain, "áta", "t"), brightness(&dark, "áta", "t"));
     assert!((t1 - t0).abs() < 1e-9, "t changed: {t0} -> {t1}");
 }
+
+/// A short vowel between voiceless sounds opens and voices: the neighbours' closing gestures keep off
+/// its middle (vowel_open) and the glottis closes on time after a voiceless sound (devoice_*). The
+/// 55 ms schwa of "sésəta" used to stay closed and voiceless, its tongue tip held from s into t.
+#[test]
+fn a_short_schwa_between_voiceless_sounds_voices() {
+    let o = PlanOptions { body: "male".into(), t0: 0.05, f0: Some(110.0), ..Default::default() };
+    let p = PieOptions::default();
+    let plan = plan_pie("sésəta", &o, &p);
+    let sch = plan.segments.iter().find(|s| s.ipa == "ə").unwrap();
+    let (a, b) = (sch.t0 + 0.2 * (sch.t1 - sch.t0), sch.t1 - 0.2 * (sch.t1 - sch.t0));
+    let mut v = Vec::new();
+    run("sésəta", &p, |voice, t| {
+        if t > a && t < b {
+            v.push(voice.glottis.voicing);
+        }
+    });
+    let mean = v.iter().sum::<f64>() / v.len() as f64;
+    assert!(mean > 0.5, "schwa voicing {mean:.2}");
+}

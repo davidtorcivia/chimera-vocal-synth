@@ -108,6 +108,25 @@ pub struct PieOptions {
     /// voiceless stops: release lag (s) and glottal abduction
     pub vot: f64,
     pub asp_ab: f64,
+    /// share of every vowel's span (centred) kept free of the neighbouring consonants' constriction
+    /// gestures: their lead and ramps are trimmed so the tract opens for even a short vowel (the
+    /// inventory's ~60 ms anticipation swallowed a 55 ms schwa between s and t whole); 0 = off
+    pub vowel_open: f64,
+    /// only vowels shorter than this (s) are guarded (long vowels leave room for normal anticipation)
+    pub vowel_open_max: f64,
+    /// the glottal opening of voiceless sounds (the planner's "aspiration", "voiceless" and "h" gestures):
+    /// strength (the planner's 5–6 saturate the opening, so it holds through most of the fade and voicing
+    /// came back ~30 ms late) and how much earlier it ends (s)
+    pub devoice_str: f64,
+    /// strength of a voiceless stop's opening (its release; `devoice_str` is the fricatives' and h's)
+    pub devoice_str_stop: f64,
+    pub devoice_early: f64,
+    /// how fast the opening comes in (s; the planner's 0.03–0.035 starts it well before the closure, so a
+    /// short vowel between voiceless sounds lost its voicing from both sides); 0 = the planner's
+    pub devoice_ramp_in: f64,
+    /// how much earlier a voiceless fricative's opening ends (s): less than a stop's, or its tail voices
+    /// (s heard as z)
+    pub devoice_early_fric: f64,
     /// murmur: abduction, its length after the release (s), pitch dip (fraction)
     pub mur_ab: f64,
     pub mur_dur: f64,
@@ -134,6 +153,9 @@ pub struct PieOptions {
     pub trill_close_y: f64,
     pub trill_speed: f64,
     /// /i/ is raised (tongue body, cm) and the jaw closed a little, so short /i/ isn't heard as /e/
+    /// t d n (and dʰ): tongue tip forward (cm) of the inventory's alveolar closure: PIE's dental-alveolar
+    /// stops (the inventory's tip sits under the crest of the ridge, heard as retroflex [ʈ] at times)
+    pub coronal_front: f64,
     /// ḱ ǵ ǵʰ: tongue body forward (cm) of the inventory's palatal stop, whose contact sits near the
     /// middle of the hard palate (a fronted [k]); a true [c] closes further forward
     pub c_front: f64,
@@ -183,6 +205,9 @@ pub struct PieOptions {
     pub dorsal_re: f64,
     /// how far downstream of the constriction the dorsal source enters (cm)
     pub dorsal_offset: f64,
+    /// a second injection point (cm; 0 = none) with `dorsal_split` of the gain (see NoiseGains)
+    pub dorsal_offset2: f64,
+    pub dorsal_split: f64,
     /// band edge (Hz) of the dorsal source, and a four-pole (steep) low-pass instead of two-pole. χ has a
     /// sweet spot: darker is heard as [k] or nothing, brighter (a 4.5 kHz edge) as [s]
     pub dorsal_lowpass: f64,
@@ -191,6 +216,9 @@ pub struct PieOptions {
     pub dorsal_area: f64,
     /// upper band edge (Hz) of the glottal aspiration noise (the engine's default 3500)
     pub glottis_lowpass: f64,
+    /// the narrowing (cm²) above which the general constriction source has faded out (the engine's 0.9 lets
+    /// laterals and close vowels hiss)
+    pub constr_area: f64,
     /// multiplier on the glottal aspiration noise gain
     pub glottis_noise: f64,
     /// aspiration colour (band edge, Hz) during h₁ [h] and h₂ [χ], set by gestures (the aspLowpass
@@ -232,6 +260,13 @@ impl Default for PieOptions {
             pal_fric: 0.0,
             vot: 0.015,
             asp_ab: 0.22,
+            vowel_open: 0.3,
+            vowel_open_max: 1.0,
+            devoice_str: 1.5,
+            devoice_str_stop: 1.5,
+            devoice_early: 0.015,
+            devoice_ramp_in: 0.0,
+            devoice_early_fric: 0.007,
             mur_ab: 0.0,
             mur_dur: 0.06,
             mur_dip: 0.11,
@@ -248,6 +283,7 @@ impl Default for PieOptions {
             trill_close_y: 9.7,
             trill_speed: 6.0,
             c_front: 0.0,
+            coronal_front: 0.2,
             i_raise: 0.22,
             i_jaw: -0.1,
             e_raise: 0.1,
@@ -270,11 +306,14 @@ impl Default for PieOptions {
             sibilant_lowpass: 5000.0,
             dorsal_re: 5500.0,
             dorsal_offset: 1.6,
+            dorsal_offset2: 3.0,
+            dorsal_split: 0.35,
             dorsal_area: 0.35,
             dorsal_lowpass: 900.0,
             dorsal_steep: false,
             glottis_lowpass: 3500.0,
             glottis_noise: 1.0,
+            constr_area: 0.45,
             h_asp_lowpass: 1200.0,
             chi_asp_lowpass: 0.0,
             s_tip_fwd: 0.0,
@@ -722,9 +761,21 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
     // plain voiceless stops; the tuned /i/ /j/ /w/
     for g in plan.gestures.iter_mut() {
         match g.label_str() {
+            "voiceless" | "h" if g.targets.has(ControlKey::ABDUCTION) => {
+                g.strength = p.devoice_str;
+                g.t1 -= p.devoice_early_fric;
+                if p.devoice_ramp_in > 0.0 {
+                    g.ramp_in = p.devoice_ramp_in;
+                }
+            }
             "aspiration" => {
                 let was_aspirated = g.targets.get(ControlKey::ABDUCTION).unwrap_or(0.0) > 0.3;
                 g.targets = Targets::default().with(ControlKey::ABDUCTION, p.asp_ab);
+                g.strength = p.devoice_str_stop;
+                g.t1 -= p.devoice_early;
+                if p.devoice_ramp_in > 0.0 {
+                    g.ramp_in = p.devoice_ramp_in;
+                }
                 if was_aspirated {
                     g.t1 -= (0.05 - p.vot) * 0.4;
                     g.ramp_out = 0.02;
@@ -775,6 +826,11 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                     g.targets.set(ArticKey::LipWidth, 1.0);
                 }
             }
+            "t" | "d" | "n" if p.coronal_front != 0.0 => {
+                if let Some(x) = g.targets.get(ArticKey::TtX) {
+                    g.targets.set(ArticKey::TtX, x + p.coronal_front);
+                }
+            }
             "c" | "ɟ" if g.strength >= 40.0 && p.c_front != 0.0 => {
                 if let Some(x) = g.targets.get(ArticKey::TbX) {
                     g.targets.set(ArticKey::TbX, x + p.c_front);
@@ -803,6 +859,35 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                 }
             }
             _ => {}
+        }
+    }
+    if p.vowel_open > 0.0 {
+        let vspans: Vec<(f64, f64)> = (0..n)
+            .filter(|&i| segs_in[i].is_vowel() && plan.segments[i].t1 - plan.segments[i].t0 < p.vowel_open_max)
+            .map(|i| (plan.segments[i].t0, plan.segments[i].t1))
+            .collect();
+        for &(a, b) in &vspans {
+            let m = 0.5 * (a + b);
+            let h = (0.5 * p.vowel_open * (b - a)).max(0.006);
+            // only obstruents' closing gestures: glides (the w release of kʷ), laterals, nasals and trills keep theirs
+            const OBSTRUENT: [&str; 13] = ["p", "b", "t", "d", "k", "g", "c", "ɟ", "s", "z", "χ", "ʁ", "ç"];
+            for g in plan.gestures.iter_mut().filter(|g| g.strength >= 40.0 && OBSTRUENT.contains(&g.label_str())) {
+                let before = g.t0 < a && g.t1 < b && g.t1 > a - 0.15;
+                let after = g.t1 > b && g.t0 > a - 0.02 && g.t0 < b + 0.15;
+                if before && g.t1 + g.ramp_out > m - h {
+                    // the consonant before: it lets go by the open stretch
+                    if g.t1 > m - h - 0.004 {
+                        g.t1 = (m - h - 0.004).max(g.t0);
+                    }
+                    g.ramp_out = (m - h - g.t1).max(0.004);
+                } else if after && g.t0 - g.ramp_in < m + h {
+                    // the consonant after: it starts closing only after the open stretch
+                    if g.t0 < m + h + 0.004 {
+                        g.t0 = (m + h + 0.004).min(g.t1);
+                    }
+                    g.ramp_in = (g.t0 - (m + h)).max(0.004);
+                }
+            }
         }
     }
     for spec in &p.vowel_deltas {
@@ -927,11 +1012,14 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     v.airway.noise_gain.teeth_lowpass = p.sibilant_lowpass;
     v.airway.noise_gain.dorsal_re = p.dorsal_re;
     v.airway.noise_gain.dorsal_offset = p.dorsal_offset;
+    v.airway.noise_gain.dorsal_offset2 = p.dorsal_offset2;
+    v.airway.noise_gain.dorsal_split = p.dorsal_split;
     v.airway.noise_gain.dorsal_area = p.dorsal_area;
     v.airway.noise_gain.dorsal_lowpass = p.dorsal_lowpass;
     v.airway.noise_gain.dorsal_steep = p.dorsal_steep;
     v.airway.noise_gain.glottis_lowpass = p.glottis_lowpass;
     v.airway.noise_gain.glottis *= p.glottis_noise;
+    v.airway.noise_gain.constr_area = p.constr_area;
     v.murmur_chink = p.mur_chink;
     v.murmur_oq = p.mur_oq;
 }

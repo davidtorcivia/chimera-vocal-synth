@@ -47,7 +47,7 @@ fn main() {
             let air = &v.airway;
             let all: Vec<f64> = air.ph_min.iter().chain(air.or_min.iter()).cloned().collect();
             let (mi, ma) = all.iter().enumerate().filter(|(_, a)| **a > 0.0).fold((0, f64::INFINITY), |m, (i, a)| if *a < m.1 { (i, *a) } else { m });
-            println!("t={:.3} narrowest #{mi}/{} (pharynx {}) area {ma:.3} cm²  glottis area {:.3}", t, all.len(), air.n_ph, v.glottis.area);
+            println!("t={:.3} narrowest #{mi}/{} (pharynx {}) area {ma:.3} cm²  glottis area {:.3}  velum port {:.3}  voicing {:.2}  dp {:.1} cmH2O  sub {:.1} supra {:.1}", t, all.len(), air.n_ph, v.glottis.area, air.frame.as_ref().map_or(f64::NAN, |f| f.velum_port), v.glottis.voicing, v.glottis.dp_sm / 980.665, air.net.p[air.trachea.last_node()] / 980.665, air.net.p[air.pharynx.first_node()] / 980.665);
             if std::env::var("AREAS").is_ok() {
                 if let Some(f) = &air.frame {
                     println!("   length {:.2} pharynx {:.2} teeth_s {:.2} lip_s {:.2}", f.length, f.pharynx_length, f.teeth_s, f.lip_s);

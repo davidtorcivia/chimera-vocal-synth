@@ -87,7 +87,7 @@ pub struct ParametricGlottis {
     pub voicing: f64,
     voicing_sm: f64,
     /// smoothed transglottal pressure (dyn/cm²)
-    dp_sm: f64,
+    pub dp_sm: f64,
     dp_coef: f64,
     voice_coef: f64,
     /// last area (telemetry)

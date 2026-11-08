@@ -24,6 +24,10 @@ pub struct NoiseGains {
     pub dorsal_re: f64,
     /// how far downstream of the constriction the dorsal source enters (cm, body-scaled)
     pub dorsal_offset: f64,
+    /// a second injection point (cm downstream; 0 = none) taking `dorsal_split` of the gain: turbulence
+    /// is spread along the jet, and one point source carves spectral zeros the spread fills
+    pub dorsal_offset2: f64,
+    pub dorsal_split: f64,
     /// the dorsal source fades out between 0.4× and 1× this area (cm², body-scaled): only a
     /// fricative's narrowing sounds, not a vowel's or a glide's
     pub dorsal_area: f64,
@@ -31,6 +35,9 @@ pub struct NoiseGains {
     /// above the glottis, its output spectrum tilts upward, so a lower edge keeps [h] and aspiration
     /// in the vowel's formants rather than in a sibilant-like top band
     pub glottis_lowpass: f64,
+    /// the constriction source fades out between 0.39× and 1× this narrowing (cm², body-scaled): 0.9 by
+    /// default; a fricative's channel is ~0.05–0.2 cm², a lateral's or a close vowel's 0.3–0.5
+    pub constr_area: f64,
     /// band edge (Hz) of the dorsal source, and whether its low-pass is four-pole (else two)
     pub dorsal_lowpass: f64,
     pub dorsal_steep: bool,
@@ -162,7 +169,7 @@ impl HumanAirway {
             ph_len: 8.8,
             or_len: 8.3,
             asp_lowpass_now: f64::NAN,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_area: 0.6, glottis_lowpass: 3500.0, dorsal_lowpass: 900.0, dorsal_steep: false },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_offset2: 0.0, dorsal_split: 0.5, dorsal_area: 0.6, glottis_lowpass: 3500.0, constr_area: 0.9, dorsal_lowpass: 900.0, dorsal_steep: false },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -306,7 +313,9 @@ impl HumanAirway {
         // narrowest open point: its jet makes frication noise. Every weight below is a smooth function
         // of geometry so sources fade in/out instead of toggling (toggling = audible noise bursts).
         let k2 = self.body.scale * self.body.scale;
-        let w_area = if min_i >= 0 { 1.0 - smooth(0.35 * k2, 0.9 * k2, min_a) } else { 0.0 };
+        // (0.35, 0.9) exactly at the default, so English renders stay bit-identical
+        let (c_lo, c_hi) = if g.constr_area == 0.9 { (0.35, 0.9) } else { (0.35 / 0.9 * g.constr_area, g.constr_area) };
+        let w_area = if min_i >= 0 { 1.0 - smooth(c_lo * k2, c_hi * k2, min_a) } else { 0.0 };
         if w_area > 0.0 {
             let n_ph_i = n_ph as isize;
             let n_tot = (n_ph + n_or) as isize;
@@ -347,8 +356,17 @@ impl HumanAirway {
                         let off2 = js_max(1.0, js_round((g.dorsal_offset * self.body.scale) / dx)) as isize;
                         let db = to_branch((n_tot - 2).min(min_i + off2));
                         if db >= 0 {
-                            let spec = NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(g.dorsal_lowpass, 300.0).re_crit(g.dorsal_re);
+                            let share = if g.dorsal_offset2 > 0.0 { 1.0 - g.dorsal_split } else { 1.0 };
+                            let spec = NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd * share).band(g.dorsal_lowpass, 300.0).re_crit(g.dorsal_re);
                             list.push(if g.dorsal_steep { spec.steep() } else { spec });
+                            if g.dorsal_offset2 > 0.0 {
+                                let off3 = js_max(1.0, js_round((g.dorsal_offset2 * self.body.scale) / dx)) as isize;
+                                let db2 = to_branch((n_tot - 2).min(min_i + off3));
+                                if db2 >= 0 && db2 != db {
+                                    let spec2 = NoiseSpec::new(src as usize, db2 as usize, bwd as usize, g.dorsal * wd * g.dorsal_split).band(g.dorsal_lowpass, 300.0).re_crit(g.dorsal_re);
+                                    list.push(if g.dorsal_steep { spec2.steep() } else { spec2 });
+                                }
+                            }
                         }
                     }
                 }
