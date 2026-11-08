@@ -100,3 +100,10 @@ JD3 30.0 / 31.2 % on the same renders. Female pass 2 (2,392 credits): 1,001 prof
 languages screened for body (80-250 Hz ≥ 0 dB vs 1-4 kHz) and detail (8-12 kHz −16 to −8 dB); 8 converted.
 Converted: mr-Purna low +7.0 / top −14.6 dB / 15.6 kHz / −50 dB noise (W02: −1.0 / −16.2 / 15.6 / −46); es-Valeria
 +3.8 / −18.4 / 14.5 kHz / −58.5; the rest lose the top above 11-12.5 kHz. Misses 36.8-42.5 % (W02 39.9-42.1).
+
+Female tie-breaker (1,665 credits, the 12 female pilot sentences, final renders): Kalyani 35.2, Valeria 36.7,
+Purna 37.6 % missed; W02 40.0 / 35.8 (two runs) — inseparable; blind A-D player on the page. Cost model: measured
+12.06 credits per converted second (132 conversions); 5.2 h per voice → 226k credits per voice: one male + one female
+451k; male + two female voices on all female clips 677k. ElevenLabs (official page, 2026-11-08): Pro $99 / 600k
+credits a month, Scale $299 / 1.8M, Creator $22 / 121k; overage per 1k credits not published (extra TTS minute
+$0.17 on Pro, $0.18 Creator).

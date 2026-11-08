@@ -88,6 +88,15 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
     <p>We forked Chimera, an open physical model of the human airway, and taught its engine Proto-Indo-European: labiovelars, murmured stops, trills, the laryngeals and the pitch accent. Then we put its renders through the same speech-to-speech conversion as our corpus. Every comparison below uses the same words on the same timing; switch versions while it plays and you stay in place.</p>
   </header>
 
+  <section id="blind">
+    <div class="eyebrow">female voice · blind</div>
+    <h2>Which female voice</h2>
+    <p class="hint">The 12 female pilot sentences, the final engine's render converted into four voices: Spanish Valeria, Marathi Purna, Marathi Kalyani and our current W02, in a hidden random order. Listen, pick, then reveal. The recognizer cannot separate them (35–40% missed, inside the voice changer's own spread), so this is your ear's call.</p>
+    <div class="player" id="bl-player"></div>
+    <p><button type="button" id="bl-reveal">Reveal the voices</button> <span class="hint" id="bl-names"></span></p>
+    <div class="list" id="bl-list" role="listbox" aria-label="Female sentences"></div>
+  </section>
+
   <section id="voices">
     <div class="eyebrow">voice test · 8 November</div>
     <h2>Which voice to convert into</h2>
@@ -144,7 +153,7 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
 
   <section>
     <h2>The conversion test</h2>
-    <p class="hint">24 held-out corpus sentences, 12 per voice, each sent through the voice changer with the corpus settings: VocalTractLab's render, Chimera's at the first pilot, and Chimera's now (1,110 credits a batch). Pick a sentence, press play, then switch; keys 1 to 9 and 0 switch too. The figures on each line are the recognizer's misses after conversion: VTL → Chimera at the first pilot → the second → tonight (before the u fix) → final (the engine for the full run). Between the last two the raw renders are nearly identical sentence by sentence, yet the converted figures swing by several sounds either way: that is how much the voice changer itself varies.</p>
+    <p class="hint">24 held-out corpus sentences, 12 per voice, each sent through the voice changer with the corpus settings: VocalTractLab's render, Chimera's at the first pilot, and Chimera's now (1,110 credits a batch). Pick a sentence, press play, then switch; keys 1 to 9 switch too; on the male sentences the last button is the same final render converted into Czech Zazy (12 male sentences: 26.4% missed, against 30.0% and 31.2% for JD3). The figures on each line are the recognizer's misses after conversion: VTL → Chimera at the first pilot → the second → tonight (before the u fix) → final (the engine for the full run). Between the last two the raw renders are nearly identical sentence by sentence, yet the converted figures swing by several sounds either way: that is how much the voice changer itself varies.</p>
     <div class="player" id="pilot-player"></div>
     <div class="filters" role="group" aria-label="Voice">
       <span class="eyebrow">Voice</span>
@@ -235,6 +244,32 @@ function Player(host, versions, head) {
   return P;
 }
 
+// ---- the blind female test
+const BL = __BL__;
+{
+  let shown = false, sel = BL.sents[0].id;
+  const lab = (k, i) => shown ? BL.names[k] : 'Voice ' + 'ABCD'[i];
+  const src = (id, k) => k === 'w02' ? `p/${id}-chim4c.mp3` : `b/${id}-${k}.mp3`;
+  const vers = id => BL.order.map((k, i) => ({ label: lab(k, i), src: src(id, k), cls: 'c' }));
+  const head = s => `<div><div class="words">${s.words}</div><div class="ipa">${s.ipa}</div></div><span class="eyebrow">${s.dur.toFixed(1)} s</span>`;
+  const pl = Player(document.getElementById('bl-player'), vers(sel), head(BL.sents[0]));
+  const list = document.getElementById('bl-list');
+  const render = () => {
+    list.innerHTML = '';
+    for (const s of BL.sents) {
+      const b = document.createElement('button'); b.className = 'row'; b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', s.id === sel);
+      b.innerHTML = `<span class="w">${s.words}</span><span class="e">${shown ? BL.order.map(k => s.px[k] + '%').join(' · ') : ''}</span>`;
+      b.onclick = () => { sel = s.id; pl.load(vers(s.id), head(s)); render(); pl.play(); };
+      list.append(b);
+    }
+  };
+  render();
+  document.getElementById('bl-reveal').onclick = () => {
+    shown = true; const s = BL.sents.find(x => x.id === sel); pl.load(vers(sel), head(s)); render();
+    document.getElementById('bl-names').textContent = BL.order.map((k, i) => `${'ABCD'[i]} = ${BL.names[k]} (${BL.tot[k]}% missed)`).join(' · ');
+  };
+}
+
 // ---- the voice test
 const VT = __VT__;
 {
@@ -301,15 +336,13 @@ for (const [v, title] of [['m', 'Male'], ['f', 'Female']]) {
 const pv = id => [
   { label: 'VTL', src: `p/${id}-vtl.mp3`, cls: 'v' },
   { label: 'VTL conv.', src: `p/${id}-vtlc.mp3`, cls: 'v' },
-  { label: 'Chimera pilot', src: `p/${id}-chim.mp3`, cls: 'c' },
-  { label: 'pilot conv.', src: `p/${id}-chimc.mp3`, cls: 'c' },
-  { label: 'Chimera now', src: `p/${id}-chim2.mp3`, cls: 'c' },
-  { label: 'now conv.', src: `p/${id}-chim2c.mp3`, cls: 'c' },
+  { label: 'pilot 1 conv.', src: `p/${id}-chimc.mp3`, cls: 'c' },
+  { label: 'pilot 2 conv.', src: `p/${id}-chim2c.mp3`, cls: 'c' },
   { label: 'tonight', src: `p/${id}-chim3.mp3`, cls: 'c' },
   { label: 'tonight conv.', src: `p/${id}-chim3c.mp3`, cls: 'c' },
   { label: 'final', src: `p/${id}-chim4.mp3`, cls: 'c' },
   { label: 'final conv.', src: `p/${id}-chim4c.mp3`, cls: 'c' },
-];
+].concat(id.includes('JD3') ? [{ label: 'Zazy conv.', src: `p/${id}-zazy.mp3`, cls: 'c' }] : []);
 const headFor = s => `<div><div class="words">${s.words}</div><div class="ipa">${s.ipa}</div></div><span class="eyebrow">${s.voice} · ${s.src}</span>`;
 const pilotPlayer = Player(document.getElementById('pilot-player'), pv(PILOT[0].id), headFor(PILOT[0]));
 const list = document.getElementById('pilot-list');
@@ -330,7 +363,7 @@ document.querySelectorAll('#voice-filter button').forEach(b => b.onclick = () =>
 });
 addEventListener('keydown', e => {
   if (e.target.closest('input,textarea')) return;
-  const k = '1234567890'.indexOf(e.key); if (k >= 0) pilotPlayer.pick(k);
+  const k = '123456789'.indexOf(e.key); if (k >= 0) pilotPlayer.pick(k);
 });
 
 // ---- passages
@@ -379,6 +412,7 @@ for (const [id, ex, note] of SOUNDS) {
 }
 </script>
 '''
+html = html.replace('__BL__', '{"order": ["w02", "valeria", "purna", "kalyani"], "names": {"valeria": "Spanish · Valeria", "purna": "Marathi · Purna", "kalyani": "Marathi · Kalyani", "w02": "W02 (current)"}, "tot": {"valeria": 36.7, "purna": 37.6, "kalyani": 35.2, "w02": 40.0}, "sents": [{"id": "t2-dawn-sun-020-p00__W02-PIE", "words": "gʷíh₃woyh₁me sóh₂wl̥-kʷe dr̥ḱih₁mé", "ipa": "ɡʷíɣwojhme sóχwl̩kʷe dr̩cihmé", "dur": 2.89, "px": {"valeria": 48, "purna": 57, "kalyani": 43, "w02": 39}}, {"id": "t2-healing-charms-003-p00__W02-PIE", "words": "gʷʰn̥dʰí tósyo mosgʰóm úd", "ipa": "ɡʷʱn̩dʱí tósjo mosɡʱóm úd", "dur": 2.15, "px": {"valeria": 35, "purna": 35, "kalyani": 47, "w02": 41}}, {"id": "t3-b001-00124-p00__W02-PIE", "words": "gʷm̥yé dáyh₂wer wóǵʰom h₂éǵōmes", "ipa": "ɡʷm̩jé dájχwer wóɟʱom χáɟoːmes", "dur": 3.58, "px": {"valeria": 48, "purna": 52, "kalyani": 52, "w02": 52}}, {"id": "t3-b002-00094-p00__W02-PIE", "words": "kapyé tóm tóm kapyóh₂", "ipa": "kapjé tóm tóm kapjóχ", "dur": 3.0, "px": {"valeria": 41, "purna": 29, "kalyani": 12, "w02": 24}}, {"id": "t3-b002-00244-v00__W02-PIE", "words": "nu wóydth₂e nu-kʷe dedórḱth₂e", "ipa": "nu wójdtχa nukʷe dedórctχa", "dur": 3.36, "px": {"valeria": 45, "purna": 27, "kalyani": 59, "w02": 50}}, {"id": "t3-b003-00051-v00__W02-PIE", "words": "h₁ń̥gʷney h₂ówins h₂léksesi wédʰesi nos", "ipa": "hń̩ɡʷnej χówins χléksesi wédʱesi nos", "dur": 4.05, "px": {"valeria": 34, "purna": 21, "kalyani": 28, "w02": 31}}, {"id": "t3-b003-00108-v00__W02-PIE", "words": "nu wódr̥ mē tr̥syéh₁t srobʰéyōmes-kʷe", "ipa": "nu wódr̩ meː tr̩sjéht srobʱéjoːmeskʷe", "dur": 4.56, "px": {"valeria": 22, "purna": 37, "kalyani": 26, "w02": 41}}, {"id": "t3-b003-00161-v00__W02-PIE", "words": "nu h₂ṓws sokʷóh₁ h₂linéHmi h₂wisyéh₁t-kʷe tód", "ipa": "nu χóːws sokʷóh χlinéhmi χwisjéhtkʷe tód", "dur": 4.46, "px": {"valeria": 41, "purna": 44, "kalyani": 44, "w02": 50}}, {"id": "t3-b004-00029-p00__W02-PIE", "words": "h₁yós wóyḱom wéyḱeti h₁nómn̥ mléwHtu", "ipa": "hjós wójcom wéjceti hnómn̩ mléwətu", "dur": 3.09, "px": {"valeria": 38, "purna": 41, "kalyani": 24, "w02": 45}}, {"id": "t3-pilot-00027-p00__W02-PIE", "words": "poh₂imḗn h₂wĺ̥h₁neh₂m pḱtnéh₁ ksnéwt", "ipa": "poχiméːn χwĺ̩hnaχm pctnéh ksnéwt", "dur": 3.24, "px": {"valeria": 52, "purna": 52, "kalyani": 52, "w02": 48}}, {"id": "t3-t022-00029-p02__W02-PIE", "words": "ǵm̥rós tóns déh₃t kʷyéh₁tis-kʷe tóybʰos h₁ést", "ipa": "ɟm̩rós tóns dóɣʷt kʷjéhtiskʷe tójbʱos hést", "dur": 3.55, "px": {"valeria": 41, "purna": 44, "kalyani": 38, "w02": 47}}, {"id": "t3-t034-00020-p02__W02-PIE", "words": "h₁léwdʰeyes bʰréh₂term̥ sepelyónt h₁ésmey-kʷe kʷékʷlom yugóm-kʷe dh₃ént", "ipa": "hléwdʱejes bʱráχterm̩ sepeljónt hésmejkʷe kʷékʷlom juɡómkʷe dɣʷónt", "dur": 5.06, "px": {"valeria": 17, "purna": 23, "kalyani": 17, "w02": 23}}]}')
 html = html.replace('__VT__', '[{"name": "JD3-PIE", "label": "current (JD3)", "gender": "male", "miss": 33.3, "noise": -49.8, "band": 14550, "air": -21.6, "murmur": 18}, {"name": "JD3-PIE-b", "label": "current, again", "gender": "male", "miss": 40.4, "noise": -50.8, "band": 14550, "air": -20.9, "murmur": 18}, {"name": "W02-PIE", "label": "current (W02)", "gender": "female", "miss": 42.1, "noise": -46.2, "band": 15600, "air": -18.3, "murmur": 19}, {"name": "W02-PIE-b", "label": "current, again", "gender": "female", "miss": 39.9, "noise": -46.0, "band": 15450, "air": -18.3, "murmur": 18}, {"name": "hi-Viraj", "label": "Hindi · Viraj", "gender": "male", "miss": 34.2, "noise": -49.8, "band": 14650, "air": -16.4, "murmur": 18}, {"name": "mr-Tukaram", "label": "Marathi · Tukaram", "gender": "male", "miss": 38.2, "noise": -46.2, "band": 13850, "air": -17.8, "murmur": 18}, {"name": "es-Antonio", "label": "Spanish · Antonio", "gender": "male", "miss": 33.3, "noise": -45.9, "band": 14700, "air": -22.4, "murmur": 17}, {"name": "it-Carmelo", "label": "Italian · Carmelo", "gender": "male", "miss": 32.5, "noise": -50.0, "band": 15550, "air": -15.3, "murmur": 18}, {"name": "cs-Zazy", "label": "Czech · Zazy", "gender": "male", "miss": 37.3, "noise": -49.4, "band": 15100, "air": -18.1, "murmur": 18}, {"name": "de-Tristan", "label": "German · Tristan", "gender": "male", "miss": 39.9, "noise": -29.8, "band": 15150, "air": -19.5, "murmur": 19}, {"name": "hi-Anjali", "label": "Hindi · Anjali", "gender": "female", "miss": 36.8, "noise": -55.6, "band": 15350, "air": -21.5, "murmur": 18}, {"name": "mr-Kalyani", "label": "Marathi · Kalyani", "gender": "female", "miss": 39.0, "noise": -49.6, "band": 14650, "air": -22.0, "murmur": 18}, {"name": "es-Sandra", "label": "Spanish · Sandra", "gender": "female", "miss": 39.0, "noise": -61.9, "band": 15150, "air": -24.1, "murmur": 18}, {"name": "it-Linda", "label": "Italian · Linda", "gender": "female", "miss": 39.5, "noise": -52.0, "band": 14750, "air": -19.7, "murmur": 18}, {"name": "cs-Hanka", "label": "Czech · Hanka", "gender": "female", "miss": 39.5, "noise": -61.1, "band": 8850, "air": -31.9, "murmur": 18}, {"name": "el-Jane", "label": "Greek · Jane", "gender": "female", "miss": 39.9, "noise": -49.1, "band": 12400, "air": -29.0, "murmur": 17}, {"name": "hr-Ivana", "label": "Croatian · Ivana", "gender": "female", "miss": 37.7, "noise": -64.3, "band": 13900, "air": -19.8, "murmur": 18}, {"name": "pl-Beata", "label": "Polish · Beata", "gender": "female", "miss": 37.7, "noise": -57.0, "band": 12500, "air": -25.1, "murmur": 18}, {"name": "de-Julia", "label": "German · Julia", "gender": "female", "miss": 42.5, "noise": -54.1, "band": 11200, "air": -27.7, "murmur": 18}, {"name": "de-Rebecca", "label": "German · Rebecca", "gender": "female", "miss": 38.6, "noise": -52.6, "band": 12000, "air": -26.8, "murmur": 18}, {"name": "es-Valeria", "label": "Spanish · Valeria", "gender": "female", "miss": 38.2, "noise": -58.5, "band": 14550, "air": -20.3, "murmur": 18}, {"name": "es-SaraMartin", "label": "Spanish · Sara Martin", "gender": "female", "miss": 36.8, "noise": -48.0, "band": 15250, "air": -21.1, "murmur": 18}, {"name": "hi-Meher", "label": "Hindi · Meher", "gender": "female", "miss": 39.5, "noise": -56.8, "band": 11700, "air": -31.0, "murmur": 18}, {"name": "mr-Purna", "label": "Marathi · Purna", "gender": "female", "miss": 38.6, "noise": -50.1, "band": 15600, "air": -21.6, "murmur": 18}, {"name": "ar-Salma", "label": "Arabic · Salma", "gender": "female", "miss": 40.8, "noise": -42.1, "band": 12650, "air": -22.7, "murmur": 18}]')
 html = html.replace('__LAB__', open('lab-data.json').read())
 html = html.replace('__PILOT__', json.dumps(pilot, ensure_ascii=False))
