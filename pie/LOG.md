@@ -12,6 +12,7 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-07 | Chimera, voice onset + vowel guard + stops (29397c1) | 29.7 % | 30.2 % | 32.4 → 35.6 % |
 | 2026-11-07 | χ back to the first pilot's single-point, brighter source (G1) | 30.0 % | 30.2 % | χ/s set: 27.7 → 36.0 % became 26.4 → 32.6 % (two conversions) |
 | 2026-11-08 | trill gets 110 ms (from its neighbours) instead of 90: r 44 → 27 % missed | 29.4 % | 29.7 % | |
+| 2026-11-08 | velum lowers 20 ms before a nasal over 20 ms (was 70 ms, English-like) | 28.6 % | 29.3 % | |
 
 Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
 36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %

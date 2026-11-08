@@ -111,7 +111,8 @@ pub struct PieOptions {
     /// share of every vowel's span (centred) kept free of the neighbouring consonants' constriction
     /// gestures: their lead and ramps are trimmed so the tract opens for even a short vowel (the
     /// inventory's ~60 ms anticipation swallowed a 55 ms schwa between s and t whole); 0 = off
-    /// how long before a nasal the velum starts to lower (s, negative: the planner's 70 ms) and its ramp
+    /// how long before a nasal the velum starts to lower (s, negative: the planner's 70 ms, English-like) and its
+    /// ramp; 20 ms over 20 ms keeps the vowel before a nasal oral and helps syllabic nasals
     pub velum_lead: f64,
     pub velum_ramp: f64,
     /// an obstruent before h is fully released by this share of the h's span (negative: off)
@@ -265,8 +266,8 @@ impl Default for PieOptions {
             pal_fric: 0.0,
             vot: 0.015,
             asp_ab: 0.22,
-            velum_lead: -1.0,
-            velum_ramp: 0.03,
+            velum_lead: 0.02,
+            velum_ramp: 0.02,
             h_release: -1.0,
             vowel_open: 0.3,
             vowel_open_max: 1.0,
