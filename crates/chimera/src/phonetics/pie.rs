@@ -137,8 +137,17 @@ pub struct PieOptions {
     pub c_front: f64,
     pub i_raise: f64,
     pub i_jaw: f64,
-    /// /e/ tongue body height change (cm): a little lower, so short /e/ isn't heard as /i/
+    /// /e/ tongue body height change (cm)
     pub e_raise: f64,
+    /// PIE *a planned as this engine vowel ("a" or "ɑ": the engine's calibrated [ɑ] meets the reference
+    /// formants of an open central-back [a] better than its [a], whose F1 falls short)
+    pub a_vowel: String,
+    /// /a/ jaw opening change (cm), /u/ and /o/ tongue body front–back change (cm; − = back)
+    pub a_jaw: f64,
+    pub u_back: f64,
+    pub o_back: f64,
+    /// further per-vowel articulator changes, "vowel:key:delta" (e.g. "ɑ:tbY:-0.3", "ɑ:root:-0.2")
+    pub vowel_deltas: Vec<String>,
     /// /j/ tongue body raise (cm)
     pub j_raise: f64,
     /// a real /w/: lip aperture (cm), protrusion, tongue body front–back (cm)
@@ -229,7 +238,12 @@ impl Default for PieOptions {
             c_front: 0.0,
             i_raise: 0.15,
             i_jaw: -0.1,
-            e_raise: -0.1,
+            e_raise: 0.1,
+            a_vowel: "ɑ".into(),
+            a_jaw: 0.0,
+            u_back: -0.4,
+            o_back: 0.0,
+            vowel_deltas: vec!["ɑ:tbY:-0.3".into()],
             j_raise: 0.08,
             w_lip_ap: 0.1,
             w_lip_prot: 1.5,
@@ -485,11 +499,12 @@ fn is_trill(s: &PieSeg) -> bool {
 }
 
 /// The engine segment the planner sees for a PIE segment.
-fn engine_ipa<'a>(s: &'a PieSeg, p: &PieOptions) -> &'a str {
+fn engine_ipa<'a>(s: &'a PieSeg, p: &'a PieOptions) -> &'a str {
     match s.base.as_str() {
         "r" if s.syllabic && p.syl_r_trill > 0 => "ə",
         "r" if s.syllabic => "ɹ",
         "r" => "ɾ",
+        "a" => p.a_vowel.as_str(),
         b => b,
     }
 }
@@ -709,6 +724,21 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                     g.targets.set(ArticKey::Jaw, j + p.i_jaw);
                 }
             }
+            "a" | "ɑ" => {
+                if let Some(j) = g.targets.get(ArticKey::Jaw) {
+                    g.targets.set(ArticKey::Jaw, j + p.a_jaw);
+                }
+            }
+            "u" => {
+                if let Some(x) = g.targets.get(ArticKey::TbX) {
+                    g.targets.set(ArticKey::TbX, x + p.u_back);
+                }
+            }
+            "o" => {
+                if let Some(x) = g.targets.get(ArticKey::TbX) {
+                    g.targets.set(ArticKey::TbX, x + p.o_back);
+                }
+            }
             "e" => {
                 if let Some(y) = g.targets.get(ArticKey::TbY) {
                     g.targets.set(ArticKey::TbY, y + p.e_raise);
@@ -757,6 +787,18 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                 }
             }
             _ => {}
+        }
+    }
+    for spec in &p.vowel_deltas {
+        let parts: Vec<&str> = spec.split(':').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let (Some(k), Ok(d)) = (ArticKey::from_name(parts[1]), parts[2].parse::<f64>()) else { continue };
+        for g in plan.gestures.iter_mut().filter(|g| g.label_str() == parts[0]) {
+            if let Some(x) = g.targets.get(k) {
+                g.targets.set(k, x + d);
+            }
         }
     }
     let ps = plan.segments.clone();
