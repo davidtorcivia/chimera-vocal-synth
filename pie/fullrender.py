@@ -41,6 +41,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", default="")
+    ap.add_argument("--extra", default="", help="extra key=value options for the renderer (e.g. lab_glide=0.03)")
     a = ap.parse_args()
     full, out = Path(a.full), Path(a.out)
     (out / "renders").mkdir(parents=True, exist_ok=True)
@@ -63,7 +64,7 @@ def main():
         with tempfile.TemporaryDirectory() as td:
             uj, wav = Path(td) / "u.json", Path(td) / "r.wav"
             json.dump(E.utterances(timing), open(uj, "w"), ensure_ascii=False)
-            p = subprocess.run([str(E.BIN), str(uj), str(wav), body, f"f0={f0:.3f}", f"accent_st={r['accent_range_st']}"],
+            p = subprocess.run([str(E.BIN), str(uj), str(wav), body, f"f0={f0:.3f}", f"accent_st={r['accent_range_st']}"] + a.extra.split(),
                                capture_output=True, text=True)
             if p.returncode:
                 return {"clip": r["clip"], "speaker": r["speaker"], "error": p.stderr[-500:]}

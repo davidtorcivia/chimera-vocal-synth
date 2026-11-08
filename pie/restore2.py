@@ -366,3 +366,97 @@ def fix_trill_env(x, guide, sr, ph, lo=500.0, hi=3500.0, floor_db=-20.0, ceil_db
         gain_db[ia:ib] += gd * w
         wsum[ia:ib] = np.maximum(wsum[ia:ib], w)
     return low + rest * 10 ** (gain_db / 20)
+
+
+# ------------------------------------------------------------------ formant edits in the LPC domain (no vocoder)
+def _lpc(frame, order):
+    """Autocorrelation LPC (Levinson-Durbin); returns a with a[0] = 1."""
+    r = np.correlate(frame, frame, mode="full")[len(frame) - 1:len(frame) + order]
+    if r[0] <= 0:
+        return np.r_[1.0, np.zeros(order)]
+    r = r.copy(); r[0] *= 1.0001
+    a = np.zeros(order + 1); a[0] = 1.0; e = r[0]
+    for i in range(1, order + 1):
+        k = -(r[i] + np.dot(a[1:i], r[i - 1:0:-1])) / e
+        a[1:i + 1] = a[1:i + 1] + k * np.r_[a[i - 1:0:-1], 1.0]
+        e *= (1 - k * k)
+        if e <= 0:
+            break
+    return a
+
+
+def _shift_formants(a, fs, scale, which=(1, 2)):
+    """Scale the frequencies of the formant-like poles (bandwidth < 600 Hz, 200-4000 Hz) with index in `which`
+    (0 = F1) by `scale`; returns the new polynomial."""
+    roots = np.roots(a)
+    pos = [i for i, z in enumerate(roots) if np.imag(z) > 0]
+    cand = []
+    for i in pos:
+        z = roots[i]
+        f = np.angle(z) * fs / (2 * np.pi)
+        bw = -np.log(max(abs(z), 1e-9)) * fs / np.pi
+        if 200 < f < 4000 and bw < 600:
+            cand.append((f, i))
+    cand.sort()
+    new = roots.copy()
+    for rank, (f, i) in enumerate(cand):
+        if rank in which:
+            z = roots[i]
+            ang = np.angle(z) * scale
+            zn = abs(z) * np.exp(1j * ang)
+            new[i] = zn
+            # its conjugate
+            j = int(np.argmin(np.abs(roots - np.conj(z))))
+            new[j] = np.conj(zn)
+    return np.real(np.poly(new))
+
+
+def lpc_formant_edit(x, sr, a_t, b_t, scale_fn, order, which=(1, 2), fs2=11025, hop=0.005, win=0.02):
+    """Edit formants of x between a_t and b_t: low band (< 5 kHz, at fs2) inverse-filtered block by block with its
+    own LPC, re-filtered with poles moved by scale_fn(t) (1 = unchanged, identity), high band untouched."""
+    from scipy.signal import resample_poly, lfilter
+    from math import gcd
+    pad = 0.04
+    ia, ib = max(0, int((a_t - pad) * sr)), min(len(x), int((b_t + pad) * sr))
+    seg = x[ia:ib]
+    lowp = butter(8, 4800, btype="low", fs=sr, output="sos")
+    low = sosfiltfilt(lowp, seg)
+    high = seg - low
+    g = gcd(sr, fs2)
+    lo2 = resample_poly(low, fs2 // g, sr // g)
+    H, W = int(hop * fs2), int(win * fs2)
+    out = np.zeros_like(lo2)
+    za = np.zeros(order); zs = np.zeros(order)
+    w = np.hanning(W)
+    for k0 in range(0, len(lo2), H):
+        blk = lo2[k0:k0 + H]
+        c = k0 + H // 2
+        fr = lo2[max(0, c - W // 2):max(0, c - W // 2) + W]
+        if len(fr) < W:
+            fr = np.pad(fr, (0, W - len(fr)))
+        a = _lpc(fr * w, order)
+        t = (ia / sr) + (c / fs2)
+        sc = scale_fn(t)
+        a2 = a if abs(sc - 1) < 1e-4 else _shift_formants(a, fs2, sc, which)
+        e, za = lfilter(a, [1.0], blk, zi=za)
+        y, zs = lfilter([1.0], a2, e, zi=zs)
+        out[k0:k0 + len(blk)] = y
+    back = resample_poly(out, sr // g, fs2 // g)[: len(seg)]
+    back = np.pad(back, (0, len(seg) - len(back)))
+    y = x.copy()
+    edited = back + high
+    wgt = ramp_window(len(seg), sr, a_t - ia / sr, b_t - ia / sr, 0.01)
+    y[ia:ib] = seg * (1 - wgt) + edited * wgt
+    return y
+
+
+def fix_kw_lpc(x, sr, ph, depth=0.15, dur=0.06, male=True):
+    """kʷ gʷ: lower F2 and F3 at the following vowel's onset by `depth` (fraction), fading to 0 over `dur`."""
+    order = 12 if male else 10
+    for i, p in enumerate(ph):
+        nx = ph[i + 1] if i + 1 < len(ph) else None
+        if p["b"] in ("k", "g") and p["lab"] and nx is not None and is_vowel(nx) and abs(nx["t0"] - p["t1"]) < 0.02:
+            on = nx["t0"]
+            fn = lambda t, on=on: 1 - depth * float(np.clip(1 - (t - on) / dur, 0, 1)) if t >= on - 0.01 else 1.0
+            x = lpc_formant_edit(x, sr, on - 0.01, on + dur, fn, order)
+    return x

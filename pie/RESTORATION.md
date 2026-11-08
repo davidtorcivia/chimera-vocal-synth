@@ -91,3 +91,12 @@ The old corpus's re-trill (PIE repo tts/vtl/retrill.py → pie_vtl.patch_trill, 
 −20 dB re the next vowel, 40 % of each 40 ms cycle, 5 ms cosine edges, only on r the timeline marks as trills.
 2+ contacts Zazy 57 → 70 %, Antonio 17 → 43, Valeria 26 → 35, W02 42 → 46 %; UTMOS +0.00 / −0.08 / −0.03 / −0.04;
 r recognition unchanged. On the lab page for the owner.
+
+Step 4 decided (owner): re-trill kept.
+Step 5 (kʷ): LPC-domain formant edit keeping the residual (`fix_kw_lpc`; identity error 0.0013): kʷ not better
+(Zazy 13 → 12/15 of 24, Antonio 9 → 11/13 of 22 for 15/25 % F2-F3 lowering), overall worse at 25 %. Third post-repair
+for kʷ to fail. Pre-distortion instead: re-render the 35 pilot clips with lab_glide 0.03 / 0.05 (was 0.01; `pie/fullrender.py
+--extra`), reconvert (2 × 2,494 credits), same chain (steps 1-4): kʷ misses 36/91 → 28/91 (30 ms) and 34/91 (50 ms;
+e after kʷ starts to round: Zazy e 6 → 23). UTMOS with 30 ms: Zazy 3.06 → 3.05, Antonio 2.93 → 2.99, Valeria 2.96 → 2.95,
+W02 2.81 → 2.94. Valeria's overall misses worse on that draw (converter variance). Corpus-wide this needs re-rendering
+and reconverting every clip with kʷ/gʷ (~350-400k credits); proposal: bundle all source-side fixes into one reconversion.
