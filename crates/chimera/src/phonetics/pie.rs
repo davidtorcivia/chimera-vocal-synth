@@ -102,6 +102,9 @@ pub struct PieOptions {
     /// a palatal stop (ḱ ǵ ǵʰ) before a vowel releases through a [j] this long (s), taken from the vowel:
     /// the palatalized release [kʲ] of the palatovelars; 0 = off
     pub pal_glide: f64,
+    /// a palatal stop before a vowel releases through palatal frication this long (s; [cç], voiced [ɟʝ]):
+    /// the slow, fricated release of a long dorsal–palatal contact; 0 = off (pal_glide wins if both are set)
+    pub pal_fric: f64,
     /// voiceless stops: release lag (s) and glottal abduction
     pub vot: f64,
     pub asp_ab: f64,
@@ -129,6 +132,9 @@ pub struct PieOptions {
     pub trill_open_y: f64,
     pub trill_speed: f64,
     /// /i/ is raised (tongue body, cm) and the jaw closed a little, so short /i/ isn't heard as /e/
+    /// ḱ ǵ ǵʰ: tongue body forward (cm) of the inventory's palatal stop, whose contact sits near the
+    /// middle of the hard palate (a fronted [k]); a true [c] closes further forward
+    pub c_front: f64,
     pub i_raise: f64,
     pub i_jaw: f64,
     /// /e/ tongue body height change (cm): a little lower, so short /e/ isn't heard as /i/
@@ -203,6 +209,7 @@ impl Default for PieOptions {
             lab_lead: 0.02,
             lab_glide: 0.03,
             pal_glide: 0.0,
+            pal_fric: 0.0,
             vot: 0.015,
             asp_ab: 0.22,
             mur_ab: 0.0,
@@ -219,6 +226,7 @@ impl Default for PieOptions {
             trill_close: 0.4,
             trill_open_y: 8.6,
             trill_speed: 6.0,
+            c_front: 0.0,
             i_raise: 0.15,
             i_jaw: -0.1,
             e_raise: -0.1,
@@ -581,7 +589,7 @@ fn pie_pitch(plan: &mut Plan, segs: &[PieSeg], question: bool, line: Option<Line
 
 fn plan_glides(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
     let palatal = |s: &PieSeg| s.base == "c" || s.base == "ɟ";
-    let wants = |s: &PieSeg| (p.lab_glide > 0.0 && s.labial) || (p.pal_glide > 0.0 && palatal(s));
+    let wants = |s: &PieSeg| (p.lab_glide > 0.0 && s.labial) || ((p.pal_glide > 0.0 || p.pal_fric > 0.0) && palatal(s));
     if !segs_in.iter().any(wants) {
         return plan_core(segs_in, &[], question, o, p);
     }
@@ -600,7 +608,15 @@ fn plan_glides(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptio
         segs.push(s2);
         if let Some(next) = segs_in.get(i + 1) {
             if !s.word_end && next.is_nucleus() {
-                let (base, len) = if s.labial { ("w", p.lab_glide) } else if palatal(s) { ("j", p.pal_glide) } else { ("", 0.0) };
+                let (base, len) = if s.labial {
+                    ("w", p.lab_glide)
+                } else if palatal(s) && p.pal_glide > 0.0 {
+                    ("j", p.pal_glide)
+                } else if palatal(s) {
+                    (if s.base == "c" { "ç" } else { "ʝ" }, p.pal_fric)
+                } else {
+                    ("", 0.0)
+                };
                 if len > 0.0 {
                     let g = len.min(0.4 * next.dur.unwrap_or(defaults[i + 1]));
                     if base == "w" {
@@ -711,6 +727,11 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                 if let Some(lp) = p.s_lip_prot {
                     g.targets.set(ArticKey::LipProt, lp);
                     g.targets.set(ArticKey::LipWidth, 1.0);
+                }
+            }
+            "c" | "ɟ" if g.strength >= 40.0 && p.c_front != 0.0 => {
+                if let Some(x) = g.targets.get(ArticKey::TbX) {
+                    g.targets.set(ArticKey::TbX, x + p.c_front);
                 }
             }
             "j" => {

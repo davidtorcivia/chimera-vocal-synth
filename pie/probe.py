@@ -57,6 +57,9 @@ def main():
             mur = [i for t, i in G.VOCAB.items() if (t.endswith("ʰ") and t[0] in "bdɡɟ") or "\u0324" in t]
             asp = [i for t, i in G.VOCAB.items() if t.endswith("ʰ") and t[0] in "ptkcq"]
             line += f"   [murmured {p[:, mur].sum(1).max() / max(1e-9, p.sum(1)[np.argmax(p[:, mur].sum(1))]):.2f}]"
+            pal = [i for t, i in G.VOCAB.items() if t in ("c", "ɟ", "kʲ", "ɡʲ", "cʲ", "cː", "cʰ", "ɟʰ", "ɟː", "c͡ç")]
+            k2 = int(np.argmax(p[:, pal].sum(1)))
+            line += f" [palatal {p[k2, pal].sum() / max(1e-9, p[k2].sum()):.2f}]"
         print(line)
 
 
