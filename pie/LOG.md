@@ -15,6 +15,7 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-08 | velum lowers 20 ms before a nasal over 20 ms (was 70 ms, English-like) | 28.6 % | 29.3 % | |
 | 2026-11-08 | the [w] glide after kʷ gʷ 10 ms instead of 30 (kʷ 24 → 13 % on a kʷe set) | 28.3 % | 28.4 % | |
 | 2026-11-08 | dark l: l gets its own tongue body (back, lowered; it had none) — l 48 → 8 %, l̩ 59 → 35 % | 27.7 % | 27.6 % | 27.4 → 33.8 % (pilot 3, 1,110 credits) |
+| 2026-11-08 | u: tongue less retracted, tighter lips — it nearly closed on the velum (0.01 cm², voicing lost, 25 dB under a in pápu); weak u 27 → 7 % | 27.4 % | 27.5 % | |
 
 Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
 36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %
@@ -58,3 +59,9 @@ Dawn hymn, night engine (whole-transcription): male raw 33 / converted 39 %, fem
 43 / 46). Pilot 3 after conversion per sound vs pilot 2: χ 63 → 40, s 38 → 28, o 19 → 5, t 36 → 24, d 40 → 20 %
 better; r 50 → 50 (the converter flattens the better trill), m 13 → 32, i 25 → 42, u 29 → 36, w 44 → 53 % worse
 (14-40 instances each).
+
+Full corpus render (`pie/fullrender.py`, 2026-11-08, engine b5b60d7): all 4,238 clips × voice of the VTL build on
+their VTL timings with the build's per-clip pitch (±2 st) and accent (3.6-4.4 st); 10.4 h, 0 errors, 0 length
+mismatches, about 16 min on the Mac. The corpus QC gate (`pie/fullqc.py`): h/χ brightness floors are for restored
+audio and fail raw (expected); 616 clips under 97 % voiced (520 male), 1,040 with more than one weak vowel —
+u (2,157 flags), i (806), o (525). The u defect is fixed above; voicing next.

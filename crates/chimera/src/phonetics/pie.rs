@@ -182,6 +182,9 @@ pub struct PieOptions {
     /// /a/ jaw opening change (cm), /u/ and /o/ tongue body front–back change (cm; − = back)
     pub a_jaw: f64,
     pub u_back: f64,
+    /// lip aperture for u (None: the inventory's); tighter lips give u its low F1 without the tongue
+    /// nearly closing on the velum (which silenced and devoiced it)
+    pub u_lip_ap: Option<f64>,
     pub o_back: f64,
     /// further per-vowel articulator changes, "vowel:key:delta" (e.g. "ɑ:tbY:-0.3", "ɑ:root:-0.2")
     pub vowel_deltas: Vec<String>,
@@ -310,7 +313,8 @@ impl Default for PieOptions {
             e_raise: 0.1,
             a_vowel: "ɑ".into(),
             a_jaw: 0.0,
-            u_back: -0.4,
+            u_back: 0.0,
+            u_lip_ap: Some(0.2),
             o_back: 0.0,
             vowel_deltas: vec!["ɑ:tbY:-0.3".into()],
             j_raise: 0.08,
@@ -820,6 +824,9 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             "u" => {
                 if let Some(x) = g.targets.get(ArticKey::TbX) {
                     g.targets.set(ArticKey::TbX, x + p.u_back);
+                }
+                if let (Some(la), true) = (p.u_lip_ap, g.targets.has(ArticKey::LipAp)) {
+                    g.targets.set(ArticKey::LipAp, la);
                 }
             }
             "o" => {
