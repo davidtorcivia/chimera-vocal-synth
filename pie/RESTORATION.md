@@ -63,3 +63,8 @@ female voice's murmur is too weak (+2 dB vs +7 male).
   ear and naturalness; one repair at a time. Tonal EQ: boosts only (the reference voices are thinner than ours).
 Step 1 listening page (mastering EQ: conversion / half / full, loudness-matched):
 https://claude.ai/artifact/G339o7pt6nqvPC3By29QAv
+
+Step 1 decided (owner): full mastering EQ for all four voices.
+Step 2 (female s, on top of step 1; cut 2.5-5 kHz / lift 6.5-10 kHz inside s): Valeria s misses 4 → 3 → 3 → 2 of 42
+(centroid 6.2 → 6.9 / 7.0 / 7.2 kHz) for cut/lift 4/3, 5/4, 7/6 dB; W02 10 → 7 → 6 → 5 of 43 (5.6 → 7.0 / 7.2 / 7.4 kHz)
+for 5/4, 7/6, 9/8 dB; UTMOS unchanged (±0.02). On the lab page for the owner's choice.

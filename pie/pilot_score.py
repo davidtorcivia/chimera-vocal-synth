@@ -43,11 +43,12 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--pilot", default=str(DATA / "full/restore-pilot"))
     ap.add_argument("--versions", default="conv,tone,bursts,s,eq,all")
+    ap.add_argument("--clips", default=str(DATA / "full/restore-pilot-clips.json"))
     a = ap.parse_args()
     versions = a.versions.split(",")
     import acoustic_map as AM
     P = Path(a.pilot)
-    clips = json.load(open(DATA / "full/restore-pilot-clips.json"))
+    clips = json.load(open(a.clips))
     import eval as E
     ud = FULLROOT / "runs" / "rp-utts" / "wav"
     ud.mkdir(parents=True, exist_ok=True)

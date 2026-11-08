@@ -48,6 +48,10 @@ button:focus-visible { outline: 2px solid var(--fix); outline-offset: 2px; }
 .row:hover { background: var(--well); }
 .row[aria-selected="true"] { background: var(--sel); }
 .row .d { font: 12px var(--mono); color: var(--muted); }
+table.t { border-collapse: collapse; font-size: 14px; min-width: 420px; }
+table.t th, table.t td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--rule); }
+table.t th { font: 500 12px var(--mono); color: var(--muted); letter-spacing: 0.04em; }
+table.t td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -59,8 +63,13 @@ button:focus-visible { outline: 2px solid var(--fix); outline-offset: 2px; }
   </header>
   <section>
     <h2>Step 1 · mastering EQ</h2>
-    <p class="hint">For each voice: the curve it gets (dB per third octave), then 12 corpus clips. Switch between the conversion as it is, half the correction and the full correction while it plays; you stay in place. Keys 1, 2, 3 switch the player you last used. The scores are naturalness (UTMOS, higher is better) and the recognizer's misses (lower is better), as a check that nothing breaks: EQ is for how it sounds.</p>
+    <p class="hint">For each voice: the curve it gets (dB per third octave), then 12 corpus clips. Switch between the conversion as it is, half the correction and the full correction while it plays; you stay in place. Number keys switch the player you last used. The scores are naturalness (UTMOS, higher is better) and the recognizer's misses (lower is better), as a check that nothing breaks: EQ is for how it sounds.</p>
     <div id="voices" style="display:grid;gap:30px"></div>
+  </section>
+  <section>
+    <h2>Step 2 · the female s</h2>
+    <p class="hint">On top of the full EQ from step 1. In the female conversions s slides toward ʃ: its energy centres around 5.6-6.2 kHz, where a female s sits near 7-8 kHz. Inside each s only, the correction cuts 2.5-5 kHz and lifts 6.5-10 kHz, in three strengths. The table gives the s's the recognizer misses, where its energy centres, and naturalness.</p>
+    <div id="step2" style="display:grid;gap:30px"></div>
   </section>
 </div>
 
@@ -121,7 +130,23 @@ for (const v of D.voices) {
     b.innerHTML = `<span>${c.words}</span><span class="d">${c.dur.toFixed(1)} s</span>`; b.onclick = () => { sel = c.id; pl.load(vers(c.id), head(c)); render(); pl.play(); }; list.append(b); } };
   render();
 }
-addEventListener('keydown', e => { if (e.target.closest('input,textarea')) return; const k = '123'.indexOf(e.key); if (k >= 0 && lastPlayer) lastPlayer.pick(k); });
+const host2 = document.getElementById('step2');
+const V2 = [['tone', 'Step 1 only'], ['s1', 'Light'], ['s2', 'Medium'], ['s3', 'Strong']];
+for (const v of D.step2) {
+  const el = document.createElement('div'); el.className = 'voice';
+  const rows = v.rows.map((r, i) => `<tr><td>${V2[i][1]}${i ? ' (' + v.cut_lift[i - 1] + ' dB)' : ''}</td><td class="n">${r.s[0]} / ${r.s[1]}</td><td class="n">${(r.cent / 1000).toFixed(1)} kHz</td><td class="n">${r.mos.toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = `<div class="vhead"><h3>${v.name}</h3></div><div style="overflow-x:auto"><table class="t"><thead><tr><th>Version</th><th>s missed</th><th>s centre</th><th>Naturalness</th></tr></thead><tbody>${rows}</tbody></table></div><div class="player"></div><div class="list" role="listbox" aria-label="${v.name} clips"></div>`;
+  host2.append(el);
+  let sel = v.clips[0].id;
+  const vers = id => V2.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
+  const head = c => `<div class="words">${c.words}</div>`;
+  const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
+  const list = el.querySelector('.list');
+  const render = () => { list.innerHTML = ''; for (const c of v.clips) { const b = document.createElement('button'); b.type = 'button'; b.className = 'row'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', c.id === sel);
+    b.innerHTML = `<span>${c.words}</span><span class="d">${c.dur.toFixed(1)} s</span>`; b.onclick = () => { sel = c.id; pl.load(vers(c.id), head(c)); render(); pl.play(); }; list.append(b); } };
+  render();
+}
+addEventListener('keydown', e => { if (e.target.closest('input,textarea')) return; const k = '1234'.indexOf(e.key); if (k >= 0 && lastPlayer) lastPlayer.pick(k); });
 </script>
 '''
 open('index.html', 'w').write(html.replace('__DATA__', json.dumps(D, ensure_ascii=False)))
