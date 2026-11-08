@@ -111,6 +111,9 @@ pub struct PieOptions {
     /// share of every vowel's span (centred) kept free of the neighbouring consonants' constriction
     /// gestures: their lead and ramps are trimmed so the tract opens for even a short vowel (the
     /// inventory's ~60 ms anticipation swallowed a 55 ms schwa between s and t whole); 0 = off
+    /// how long before a nasal the velum starts to lower (s, negative: the planner's 70 ms) and its ramp
+    pub velum_lead: f64,
+    pub velum_ramp: f64,
     /// an obstruent before h is fully released by this share of the h's span (negative: off)
     pub h_release: f64,
     pub vowel_open: f64,
@@ -262,6 +265,8 @@ impl Default for PieOptions {
             pal_fric: 0.0,
             vot: 0.015,
             asp_ab: 0.22,
+            velum_lead: -1.0,
+            velum_ramp: 0.03,
             h_release: -1.0,
             vowel_open: 0.3,
             vowel_open_max: 1.0,
@@ -280,7 +285,7 @@ impl Default for PieOptions {
             vstop_str: 6.0,
             vstop_root: Some(0.8),
             trill_n: 3,
-            trill_min: 0.09,
+            trill_min: 0.11,
             trill_close: 0.4,
             trill_open_y: 8.6,
             trill_close_y: 9.7,
@@ -891,6 +896,14 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                     g.ramp_in = (g.t0 - (m + h)).max(0.004);
                 }
             }
+        }
+    }
+    if p.velum_lead >= 0.0 {
+        for g in plan.gestures.iter_mut().filter(|g| g.label_str() == "velum") {
+            // the planner starts it 20 ms before the nasal with a 50 ms ramp
+            let start = g.t0 + 0.02;
+            g.ramp_in = p.velum_ramp;
+            g.t0 = (start - p.velum_lead + p.velum_ramp).min(g.t1);
         }
     }
     if p.h_release >= 0.0 {
