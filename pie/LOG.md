@@ -72,3 +72,10 @@ the post-restore h/χ floors 3,361 / 4,238 pass. Remaining voicing flags are mos
 QC pitch tracker loses it between contacts). Hymn with the u fix (646 credits): ú of dʰúgh₂ter −14/−16 → −5/−6 dB
 vs the median vowel; converted span score 35.7 → 38.9 %, the difference in e, w, t (untouched by the fix): the
 voice changer's run-to-run spread on one passage. Credits overnight: 8,430 of the 12,000 approved.
+
+Pilot 4 (final engine dcc37da, 1,110 credits): raw 27.9 %, converted 35.0 % (pilot 3: 27.4 / 33.8). Raw renders
+per sentence nearly identical to pilot 3, converted swings ±2-4 sounds per sentence both ways: converter spread
+on 24 sentences is about ±1.5 overall and ±4 per voice. VTL's raw renders pass the h/χ brightness floors (h share
+median 0.84, χ 0.57 on the 326 local clips); Chimera's do not (h 0.19-0.37, χ 0.48). A 2 kHz breath band for h
+reaches 0.52 with the same h recognition but costs 0.4 points on neighbouring vowels: left off, owner to decide.
+Credits overnight: 9,540 of 12,000.

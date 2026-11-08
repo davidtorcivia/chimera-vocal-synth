@@ -1,6 +1,6 @@
 {
  "credits_budget": 12000,
- "other_credits": 3684,
+ "other_credits": 4794,
  "tests": [
   {
    "name": "vtl",
@@ -22,7 +22,8 @@
    "name": "chiA2",
    "label": "pilot 2 again",
    "what": "The same render converted a second time, to see how much the voice changer varies.",
-   "credits": 678
+   "credits": 678,
+   "raw_of": "chiA"
   },
   {
    "name": "chiB",
@@ -40,7 +41,8 @@
    "name": "chiC2",
    "label": "χ fix again",
    "what": "The adopted χ fix converted a second time (same render, bit for bit).",
-   "credits": 678
+   "credits": 678,
+   "raw_of": "chiC"
   },
   {
    "name": "vq1",
@@ -115,6 +117,18 @@
   {
    "t": "2026-11-08 02:13",
    "text": "Full corpus re-rendered with the u fix: clips failing the voicing check 616 → 362, more than one weak vowel 1,040 → 540; leaving aside the h and χ brightness floors (meant for restored audio), 3,361 of 4,238 clips pass as raw sources. Most remaining voicing flags are trilled syllabic r̩, which the QC's pitch tracker loses between contacts (it is voiced for most of its length). The hymn's ú in dʰúgh₂ter rose from 14-16 dB under the other vowels to 5-6 dB; converted again (646 credits), it scores a little worse than the night version, but in sounds the fix does not touch (e, w, t), which is the voice changer's own variation. Engine ready for the full run; the renders are on disk (10.4 h, 44.1 kHz, the VTL build's names and lengths)."
+  },
+  {
+   "t": "2026-11-08 02:30",
+   "text": "u, second pass: the first fix had fronted u (male F2 +132 Hz over the reference). A midpoint, tongue slightly back and lips a little tighter, puts the male u within 28 Hz of the reference and keeps it open and voiced; weak u's 10% (27% before tonight). The female u stays about 150 Hz front, because backing it closes the velar passage again in the smaller tract. Held-out 27.0%."
+  },
+  {
+   "t": "2026-11-08 02:30",
+   "text": "Pilot 4, the readiness test at the final engine (1,110 credits): raw 27.9%, converted 35.0% (pilot 3: 27.4 / 33.8; VTL 56.5). Sentence by sentence the raw renders are nearly identical to pilot 3, yet the converted results swing by 2-4 sounds either way, so the difference is the voice changer's own variation. The male voice converted better (30.0%), the female worse (40.0%), both within that spread."
+  },
+  {
+   "t": "2026-11-08 02:30",
+   "text": "An open decision for you: the corpus QC gate has brightness floors for h and χ. VTL's raw renders pass them (h median 0.84 of its energy in 2-8 kHz, χ 0.57); Chimera's h is far darker (about 0.2-0.4) because I darkened it earlier to stop the recognizer hearing h as s. A brighter h (breath band to 2 kHz) moves it into the documented range (0.52) with h recognized just as well, but costs 0.4 points on the neighbouring vowels. Converted h is mostly lost either way (VTL's too); your restoration stage re-lays it. I left h as is: accuracy first."
   }
  ]
 }

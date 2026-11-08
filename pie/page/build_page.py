@@ -125,16 +125,17 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
         <tr><td>VocalTractLab (the current corpus)</td><td class="n">55.3%</td><td class="n">56.5%</td></tr>
         <tr><td>Chimera at the first pilot</td><td class="n">35.3%</td><td class="n">38.9%</td></tr>
         <tr><td>Chimera, second pilot (evening)</td><td class="n">32.4%</td><td class="n">35.6%</td></tr>
-        <tr><td>Chimera tonight</td><td class="n best">27.4%</td><td class="n best">33.8%</td></tr>
+        <tr><td>Chimera tonight, before the u fix</td><td class="n best">27.4%</td><td class="n best">33.8%</td></tr>
+        <tr><td>Chimera final (the full-run engine)</td><td class="n">27.9%</td><td class="n">35.0%</td></tr>
       </tbody>
     </table></div>
-    <p class="hint">On 162 held-out corpus sentences (not converted): VocalTractLab 54.3%, the converted corpus 53.2%, Chimera at the second pilot 30.2%, tonight 27.5%. Today's Chimera beats VTL after conversion on all 24 sentences and the pilot-time Chimera on 12. Naturalness of the converted audio (UTMOS) is the same for all three, about 3.2–3.3.</p>
+    <p class="hint">On 162 held-out corpus sentences (not converted): VocalTractLab 54.3%, the converted corpus 53.2%, Chimera at the second pilot 30.2%, final 27.0%. Today's Chimera beats VTL after conversion on all 24 sentences and the pilot-time Chimera on 12. Naturalness of the converted audio (UTMOS) is the same for all three, about 3.2–3.3.</p>
     <p class="hint">What the recognizer cannot hear in any of them: the murmured stops (bʰ dʰ gʰ), the palatals (ḱ ǵ) and ʁʷ. Those are checked by acoustics instead: murmur is 5–6.5 dB breathier than the plain stop and fully voiced, ḱ has palatal transitions. One regression shows only after conversion: today's χ survives the voice changer worse than the pilot's (63% missed after conversion against 33%, though both are about 30% raw).</p>
   </section>
 
   <section>
     <h2>The conversion test</h2>
-    <p class="hint">24 held-out corpus sentences, 12 per voice, each sent through the voice changer with the corpus settings: VocalTractLab's render, Chimera's at the first pilot, and Chimera's now (1,110 credits a batch). Pick a sentence, press play, then switch; keys 1 to 8 switch too. The figures on each line are the recognizer's misses after conversion: VTL → Chimera at the first pilot → the second → tonight.</p>
+    <p class="hint">24 held-out corpus sentences, 12 per voice, each sent through the voice changer with the corpus settings: VocalTractLab's render, Chimera's at the first pilot, and Chimera's now (1,110 credits a batch). Pick a sentence, press play, then switch; keys 1 to 9 and 0 switch too. The figures on each line are the recognizer's misses after conversion: VTL → Chimera at the first pilot → the second → tonight (before the u fix) → final (the engine for the full run). Between the last two the raw renders are nearly identical sentence by sentence, yet the converted figures swing by several sounds either way: that is how much the voice changer itself varies.</p>
     <div class="player" id="pilot-player"></div>
     <div class="filters" role="group" aria-label="Voice">
       <span class="eyebrow">Voice</span>
@@ -236,7 +237,7 @@ document.getElementById('lab-budget').textContent = `Credits used overnight: ${L
   for (const e of LAB.journal) { const li = document.createElement('li'); li.innerHTML = `<time>${e.t}</time><span></span>`; li.querySelector('span').textContent = e.text; jl.append(li); }
 }
 let labKind = 1, labSel = LAB.sents[0].id;
-const labVersions = id => LAB.tests.map(t => ({ label: t.label, src: `c/${t.name}/${id}-${labKind ? 'conv' : 'raw'}.mp3`, cls: t.name === 'vtl' ? 'v' : 'c' }));
+const labVersions = id => LAB.tests.map(t => ({ label: t.label, src: labKind ? `c/${t.name}/${id}-conv.mp3` : `c/${t.raw_of}/${id}-raw.mp3`, cls: t.name === 'vtl' ? 'v' : 'c' }));
 const labHead = s => `<div><div class="words">${s.words}</div><div class="ipa">${s.ipa}</div></div><span class="eyebrow">${s.voice} · ${s.dur} s</span>`;
 const labPlayer = Player(document.getElementById('lab-player'), labVersions(labSel), labHead(LAB.sents[0]));
 const labList = document.getElementById('lab-list');
@@ -284,6 +285,8 @@ const pv = id => [
   { label: 'now conv.', src: `p/${id}-chim2c.mp3`, cls: 'c' },
   { label: 'tonight', src: `p/${id}-chim3.mp3`, cls: 'c' },
   { label: 'tonight conv.', src: `p/${id}-chim3c.mp3`, cls: 'c' },
+  { label: 'final', src: `p/${id}-chim4.mp3`, cls: 'c' },
+  { label: 'final conv.', src: `p/${id}-chim4c.mp3`, cls: 'c' },
 ];
 const headFor = s => `<div><div class="words">${s.words}</div><div class="ipa">${s.ipa}</div></div><span class="eyebrow">${s.voice} · ${s.src}</span>`;
 const pilotPlayer = Player(document.getElementById('pilot-player'), pv(PILOT[0].id), headFor(PILOT[0]));
@@ -294,7 +297,7 @@ function renderList() {
   for (const s of PILOT.filter(s => voice === 'all' || s.voice === voice)) {
     const b = document.createElement('button');
     b.className = 'row'; b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', s.id === selected);
-    b.innerHTML = `<span class="w">${s.words}</span><span class="e">${s.px[1]}% → ${s.px[3]}% → ${s.px[5]}% → <b>${s.px[7]}%</b></span><span class="meta">${s.voice} · ${s.dur.toFixed(1)} s · ${s.src}</span>`;
+    b.innerHTML = `<span class="w">${s.words}</span><span class="e">${s.px[1]}% → ${s.px[3]}% → ${s.px[5]}% → ${s.px[7]}% → <b>${s.px[9]}%</b></span><span class="meta">${s.voice} · ${s.dur.toFixed(1)} s · ${s.src}</span>`;
     b.onclick = () => { selected = s.id; pilotPlayer.load(pv(s.id), headFor(s)); renderList(); pilotPlayer.play(); };
     list.append(b);
   }
@@ -305,7 +308,7 @@ document.querySelectorAll('#voice-filter button').forEach(b => b.onclick = () =>
 });
 addEventListener('keydown', e => {
   if (e.target.closest('input,textarea')) return;
-  const k = '12345678'.indexOf(e.key); if (k >= 0) pilotPlayer.pick(k);
+  const k = '1234567890'.indexOf(e.key); if (k >= 0) pilotPlayer.pick(k);
 });
 
 // ---- passages
