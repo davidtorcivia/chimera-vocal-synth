@@ -263,7 +263,7 @@ impl Default for PieOptions {
             vowel_open: 0.3,
             vowel_open_max: 1.0,
             devoice_str: 1.5,
-            devoice_str_stop: 1.5,
+            devoice_str_stop: 2.5,
             devoice_early: 0.015,
             devoice_ramp_in: 0.0,
             devoice_early_fric: 0.015,
