@@ -68,3 +68,14 @@ Step 1 decided (owner): full mastering EQ for all four voices.
 Step 2 (female s, on top of step 1; cut 2.5-5 kHz / lift 6.5-10 kHz inside s): Valeria s misses 4 → 3 → 3 → 2 of 42
 (centroid 6.2 → 6.9 / 7.0 / 7.2 kHz) for cut/lift 4/3, 5/4, 7/6 dB; W02 10 → 7 → 6 → 5 of 43 (5.6 → 7.0 / 7.2 / 7.4 kHz)
 for 5/4, 7/6, 9/8 dB; UTMOS unchanged (±0.02). On the lab page for the owner's choice.
+
+Step 2 decided (owner): strong s (Valeria 7/6 dB, W02 9/8 dB).
+Step 3 (bursts, on steps 1-2): fixed 2-8 kHz lift or per-burst fill of the shortfall against the source (contrast
+transfer, `restore2.contrast_transfer`, STFT gain with original phase). Bursts rise up to ~6 dB but p t k are not
+recognized better; misses Zazy 30.7 → 31.6/30.5, Antonio 31.5 → 33.3/33.5, Valeria 32.7 → 32.1/31.4, W02 35.0 →
+36.1/35.6 (fixed / half fill); UTMOS ±0.02. Recommendation: skip (or Valeria only); on the page for the owner's ear.
+Research (agent, 2026-11-08): Hazan & Simpson 1996/1998 cue enhancement (+12 dB bursts, ramped, abrupt steps hurt);
+LPC-domain formant edits keeping the residual (Kuwabara & Takagi 1987) for kʷ and e; breathiness needs
+pitch-synchronous, LPC-shaped aspiration noise (Klatt & Klatt 1990; Hermes 1991) — an H1 boost alone reads as
+nasality in a high voice; trills: transfer the source's 500-3,500 Hz envelope only, leave <500 Hz (voicing) intact
+(a 2026 IberSPEECH paper cited, not verified); pre-distortion literature is thin.

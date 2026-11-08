@@ -71,6 +71,11 @@ table.t td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     <p class="hint">On top of the full EQ from step 1. In the female conversions s slides toward ʃ: its energy centres around 5.6-6.2 kHz, where a female s sits near 7-8 kHz. Inside each s only, the correction cuts 2.5-5 kHz and lifts 6.5-10 kHz, in three strengths. The table gives the s's the recognizer misses, where its energy centres, and naturalness.</p>
     <div id="step2" style="display:grid;gap:30px"></div>
   </section>
+  <section>
+    <h2>Step 3 · stop bursts</h2>
+    <p class="hint">On top of steps 1 and 2. The converter weakens the release bursts of p t k by 3-8 dB. Two repairs: a fixed lift of 2-8 kHz in the 18 ms after each release, and a per-burst fill of half of that burst's own shortfall against the source (its loudness relative to the next vowel). Neither helps the recognizer except for Valeria, and naturalness does not move; this is for your ear: does it sound crisper, or harsher?</p>
+    <div id="step3" style="display:grid;gap:30px"></div>
+  </section>
 </div>
 
 <script>
@@ -139,6 +144,22 @@ for (const v of D.step2) {
   host2.append(el);
   let sel = v.clips[0].id;
   const vers = id => V2.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
+  const head = c => `<div class="words">${c.words}</div>`;
+  const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
+  const list = el.querySelector('.list');
+  const render = () => { list.innerHTML = ''; for (const c of v.clips) { const b = document.createElement('button'); b.type = 'button'; b.className = 'row'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', c.id === sel);
+    b.innerHTML = `<span>${c.words}</span><span class="d">${c.dur.toFixed(1)} s</span>`; b.onclick = () => { sel = c.id; pl.load(vers(c.id), head(c)); render(); pl.play(); }; list.append(b); } };
+  render();
+}
+const host3 = document.getElementById('step3');
+const V3 = [['c2', 'Steps 1-2'], ['b_eq', 'Fixed lift'], ['b_ct50', 'Half fill']];
+for (const v of D.step3) {
+  const el = document.createElement('div'); el.className = 'voice';
+  const rows = v.rows.map((r, i) => `<tr><td>${V3[i][1]}</td><td class="n">${r.miss}%</td><td class="n">${r.burst} dB</td><td class="n">${r.mos.toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = `<div class="vhead"><h3>${v.name}</h3></div><div style="overflow-x:auto"><table class="t"><thead><tr><th>Version</th><th>Misses</th><th>Burst re vowel</th><th>Naturalness</th></tr></thead><tbody>${rows}</tbody></table></div><div class="player"></div><div class="list" role="listbox" aria-label="${v.name} clips"></div>`;
+  host3.append(el);
+  let sel = v.clips[0].id;
+  const vers = id => V3.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
   const head = c => `<div class="words">${c.words}</div>`;
   const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
   const list = el.querySelector('.list');

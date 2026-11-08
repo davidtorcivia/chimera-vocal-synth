@@ -243,3 +243,84 @@ def fix_murmur(x, sr, ph, ap_mix=0.3, h1_db=6.0, tilt_db=4.0):
 
             x = _world_segment(x, sr, on, on + dur, edit)
     return x
+
+
+# ------------------------------------------------------------------ contrast transfer (no resynthesis)
+def _stft(x, n=512, hop=128):
+    w = np.hanning(n)
+    pad = np.pad(x, (n, n))
+    frames = (len(pad) - n) // hop + 1
+    idx = np.arange(frames)[:, None] * hop + np.arange(n)[None, :]
+    return np.fft.rfft(pad[idx] * w, axis=1), w
+
+
+def _istft(X, length, n=512, hop=128, w=None):
+    w = np.hanning(n) if w is None else w
+    fr = np.fft.irfft(X, n=n, axis=1) * w
+    out = np.zeros((X.shape[0] - 1) * hop + n)
+    norm = np.zeros_like(out)
+    for i, f in enumerate(fr):
+        out[i * hop:i * hop + n] += f
+        norm[i * hop:i * hop + n] += w ** 2
+    out = out / np.maximum(norm, 1e-8)
+    return out[n:n + length]
+
+
+def _bands(sr, n, lo=80, hi=None, per_oct=3):
+    hi = hi or sr / 2 * 0.95
+    edges = [lo]
+    while edges[-1] * 2 ** (1 / per_oct) < hi:
+        edges.append(edges[-1] * 2 ** (1 / per_oct))
+    f = np.fft.rfftfreq(n, 1 / sr)
+    return np.array(edges), f
+
+
+def contrast_transfer(x, src, sr, spans, n=512, hop=128, max_db=9.0):
+    """For each span (a, b, ref_a, ref_b, alpha): give the converted signal, inside [a, b], the source's spectral
+    contrast against its own reference stretch [ref_a, ref_b] (third-octave bands), raised to `alpha`, as a gain on the
+    STFT magnitude with the original phase. Gains are smoothed over time and capped at ±max_db."""
+    X, w = _stft(x, n, hop)
+    S, _ = _stft(src, n, hop)
+    edges, f = _bands(sr, n)
+    G = np.zeros(X.shape)                                     # dB
+    W = np.zeros(X.shape[0])
+    tfr = (np.arange(X.shape[0]) * hop - n) / sr + n / 2 / sr   # frame centre times
+    bi = [np.where((f >= edges[i]) & (f < edges[i + 1]))[0] for i in range(len(edges) - 1)]
+    cen = np.sqrt(edges[:-1] * edges[1:])
+
+    def bandpow(M, rows):
+        P = np.abs(M[rows]) ** 2
+        return np.array([P[:, ix].mean() if len(ix) else np.nan for ix in bi]) if P.ndim == 2 else None
+
+    for (a, b, ra, rb, alpha) in spans:
+        rows = np.where((tfr >= a) & (tfr <= b))[0]
+        rref = np.where((tfr >= ra) & (tfr <= rb))[0]
+        if len(rows) == 0 or len(rref) < 2:
+            continue
+        refS = np.array([(np.abs(S[rref][:, ix]) ** 2).mean() for ix in bi]) + 1e-12
+        refX = np.array([(np.abs(X[rref][:, ix]) ** 2).mean() for ix in bi]) + 1e-12
+        for r in rows:
+            cs = np.array([(np.abs(S[r, ix]) ** 2).mean() for ix in bi]) / refS
+            cx = np.array([(np.abs(X[r, ix]) ** 2).mean() for ix in bi]) / refX
+            gdb = alpha * 10 * np.log10((cs + 1e-12) / (cx + 1e-12))
+            gdb = np.clip(np.nan_to_num(gdb), -max_db, max_db)
+            G[r] = np.interp(np.log(np.maximum(f, 1)), np.log(cen), gdb)
+            W[r] = 1.0
+    # smooth over time (5 frames) so the gain has no steps
+    k = np.hanning(7); k /= k.sum()
+    Gs = np.apply_along_axis(lambda c: np.convolve(c, k, mode="same"), 0, G * W[:, None])
+    Ws = np.convolve(W, k, mode="same")
+    Gs = Gs / np.maximum(Ws, 1e-6)[:, None] * np.minimum(Ws, 1)[:, None]
+    Y = X * 10 ** (Gs / 20)
+    return _istft(Y, len(x), n, hop, w)
+
+
+def burst_spans(ph, dur=0.02, alpha=1.0):
+    """The 20 ms after each p t k (plain or labial) release, against the middle of the following vowel."""
+    out = []
+    for i, p in enumerate(ph):
+        nx = ph[i + 1] if i + 1 < len(ph) else None
+        if p["b"] in ("p", "t", "k") and nx is not None and is_vowel(nx) and abs(nx["t0"] - p["t1"]) < 0.02:
+            vm0, vm1 = nx["t0"] + 0.3 * (nx["t1"] - nx["t0"]), nx["t1"] - 0.3 * (nx["t1"] - nx["t0"])
+            out.append((p["t1"] - 0.004, p["t1"] + dur, vm0, vm1, alpha))
+    return out
