@@ -10,6 +10,19 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-07 | VocalTractLab v10 (the current corpus) | | 54.3 % | 55.3 → 56.5 % |
 | 2026-11-07 | Chimera, first pilot (fe2c125) | | 33.2 % | 35.3 → 38.9 % |
 | 2026-11-07 | Chimera, voice onset + vowel guard + stops (29397c1) | 29.7 % | 30.2 % | 32.4 → 35.6 % |
+| 2026-11-07 | χ back to the first pilot's single-point, brighter source (G1) | 30.0 % | 30.2 % | χ/s set: 27.7 → 36.0 % became 27.4 → 31.7 % |
+
+Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
+36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %
+(χ 58 → 50 % missed, s 41 → 19 %). Raw scores barely move, so χ is now judged after conversion.
+
+Human floor (`pie/humanfloor.py`): PhoneticXeus on 1,000 real recorded words from VoxAngeles (95 languages,
+audited IPA), scored like the hymn's whole-transcription measure, misses 44.9 % of the sounds. The hymn from
+Chimera scores 37-43 % raw on that measure, so whole-transcription numbers are at the recognizer's floor; the
+per-phone span score (30 %) still has room.
+
+Voice quality (`pie/voicequal.py`, dawn hymn): male jitter 1.2 %, shimmer 9 %, HNR 16 dB (human range); female
+jitter 0.8 %, HNR 21 dB, 4-8 kHz band 28 dB under 0-4 kHz (16 dB after conversion): too steady and too dark.
 
 Dawn hymn, whole-hymn transcription vs its 189 target sounds (`pie/wordscore.py` logic; the site's Kokoro voice
 has its own timing): male VTL 40 / converted 52, Chimera 37 / converted 41, site Kokoro 54 %; female VTL 57 / 64,
