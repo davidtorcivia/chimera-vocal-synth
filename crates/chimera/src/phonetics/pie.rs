@@ -130,6 +130,8 @@ pub struct PieOptions {
     pub trill_min: f64,
     pub trill_close: f64,
     pub trill_open_y: f64,
+    /// tongue-tip height of a trill contact (higher = a firmer, more complete closure)
+    pub trill_close_y: f64,
     pub trill_speed: f64,
     /// /i/ is raised (tongue body, cm) and the jaw closed a little, so short /i/ isn't heard as /e/
     /// ḱ ǵ ǵʰ: tongue body forward (cm) of the inventory's palatal stop, whose contact sits near the
@@ -234,9 +236,10 @@ impl Default for PieOptions {
             trill_min: 0.09,
             trill_close: 0.4,
             trill_open_y: 8.6,
+            trill_close_y: 9.7,
             trill_speed: 6.0,
             c_front: 0.0,
-            i_raise: 0.15,
+            i_raise: 0.22,
             i_jaw: -0.1,
             e_raise: 0.1,
             a_vowel: "ɑ".into(),
@@ -248,7 +251,7 @@ impl Default for PieOptions {
             w_lip_ap: 0.1,
             w_lip_prot: 1.5,
             w_tb_x: 2.1,
-            w_tb_y: -0.15,
+            w_tb_y: -0.08,
             glide_lip_ap: 0.12,
             chi_raise: 0.07,
             chi_abd: 0.3,
@@ -830,7 +833,7 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             let per = (c_b - c_a) / k_n as f64;
             for k in 0..k_n {
                 let c0 = c_a + k as f64 * per;
-                let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, 9.7);
+                let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, p.trill_close_y);
                 let open = Targets::default().with(ArticKey::TtX, 6.1).with(ArticKey::TtY, p.trill_open_y);
                 plan.gestures.push(Gesture::new(c0 - 0.006, c0 + p.trill_close * per, 0.004, 0.004, 40.0, close).speed(p.trill_speed).label("r"));
                 plan.gestures.push(Gesture::new(c0 + p.trill_close * per, c0 + per - 0.006, 0.004, 0.004, 40.0, open).speed(p.trill_speed).label("r"));
@@ -847,7 +850,7 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                 let per = (b - a) / k_n as f64;
                 for k in 0..k_n {
                     let c0 = a + k as f64 * per;
-                    let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, 9.7);
+                    let close = Targets::default().with(ArticKey::TtX, 6.25).with(ArticKey::TtY, p.trill_close_y);
                     plan.gestures.push(Gesture::new(c0 - 0.006, c0 + p.trill_close * per, 0.004, 0.004, 40.0, close).speed(p.trill_speed).label("r"));
                     if k + 1 < k_n {
                         let open = Targets::default().with(ArticKey::TtX, 6.1).with(ArticKey::TtY, p.trill_open_y);
