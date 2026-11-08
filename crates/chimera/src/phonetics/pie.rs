@@ -162,6 +162,9 @@ pub struct PieOptions {
     /// t d n (and dʰ): tongue tip forward (cm) of the inventory's alveolar closure: PIE's dental-alveolar
     /// stops (the inventory's tip sits under the crest of the ridge, heard as retroflex [ʈ] at times)
     pub coronal_front: f64,
+    /// tongue body for l (None: whatever the neighbours leave); a back, lowered body is a dark l
+    pub l_tb_x: Option<f64>,
+    pub l_tb_y: Option<f64>,
     /// ḱ ǵ ǵʰ: tongue body forward (cm) of the inventory's palatal stop, whose contact sits near the
     /// middle of the hard palate (a fronted [k]); a true [c] closes further forward
     pub c_front: f64,
@@ -293,6 +296,8 @@ impl Default for PieOptions {
             trill_speed: 6.0,
             c_front: 0.0,
             coronal_front: 0.2,
+            l_tb_x: Some(2.0),
+            l_tb_y: Some(5.4),
             i_raise: 0.22,
             i_jaw: -0.1,
             e_raise: 0.1,
@@ -838,6 +843,14 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             "t" | "d" | "n" if p.coronal_front != 0.0 => {
                 if let Some(x) = g.targets.get(ArticKey::TtX) {
                     g.targets.set(ArticKey::TtX, x + p.coronal_front);
+                }
+            }
+            "l" if g.strength >= 40.0 && (p.l_tb_x.is_some() || p.l_tb_y.is_some()) => {
+                if let Some(x) = p.l_tb_x {
+                    g.targets.set(ArticKey::TbX, x);
+                }
+                if let Some(y) = p.l_tb_y {
+                    g.targets.set(ArticKey::TbY, y);
                 }
             }
             "c" | "ɟ" if g.strength >= 40.0 && p.c_front != 0.0 => {
