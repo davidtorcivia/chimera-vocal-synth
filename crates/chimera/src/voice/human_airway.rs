@@ -31,6 +31,9 @@ pub struct NoiseGains {
     /// above the glottis, its output spectrum tilts upward, so a lower edge keeps [h] and aspiration
     /// in the vowel's formants rather than in a sibilant-like top band
     pub glottis_lowpass: f64,
+    /// band edge (Hz) of the dorsal source, and whether its low-pass is four-pole (else two)
+    pub dorsal_lowpass: f64,
+    pub dorsal_steep: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -60,6 +63,8 @@ pub struct HumanAirway {
     pub or_len: f64,
     /// noise gains (tunable)
     pub noise_gain: NoiseGains,
+    /// the aspiration band edge a gesture sets for now (NaN: `noise_gain.glottis_lowpass`)
+    pub asp_lowpass_now: f64,
     /// max area change rate (cm²/s, body-scaled): a physiological guard against geometric jumps
     pub max_area_rate: f64,
     /// additional rate per cm² of current area (1/s)
@@ -156,7 +161,8 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_area: 0.6, glottis_lowpass: 3500.0 },
+            asp_lowpass_now: f64::NAN,
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_area: 0.6, glottis_lowpass: 3500.0, dorsal_lowpass: 900.0, dorsal_steep: false },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -285,7 +291,7 @@ impl HumanAirway {
         let mut list = core::mem::take(&mut self.noise_list);
         list.clear();
         // aspiration: jet from the glottis hits the epilarynx/ventricular region
-        list.push(NoiseSpec::new(self.glottis_port, self.branch_of(self.pharynx, 1), self.branch_of(self.trachea, self.trachea.n as isize - 2), g.glottis).band(g.glottis_lowpass, 300.0));
+        list.push(NoiseSpec::new(self.glottis_port, self.branch_of(self.pharynx, 1), self.branch_of(self.trachea, self.trachea.n as isize - 2), g.glottis).band(if self.asp_lowpass_now.is_finite() { self.asp_lowpass_now } else { g.glottis_lowpass }, 300.0));
         // narrowest open point in pharynx+oral (global position index p over concatenated tubes)
         let (n_ph, n_or) = (self.n_ph, self.n_or);
         let mut min_a = f64::INFINITY;
@@ -341,7 +347,8 @@ impl HumanAirway {
                         let off2 = js_max(1.0, js_round((g.dorsal_offset * self.body.scale) / dx)) as isize;
                         let db = to_branch((n_tot - 2).min(min_i + off2));
                         if db >= 0 {
-                            list.push(NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(900.0, 300.0).re_crit(g.dorsal_re));
+                            let spec = NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(g.dorsal_lowpass, 300.0).re_crit(g.dorsal_re);
+                            list.push(if g.dorsal_steep { spec.steep() } else { spec });
                         }
                     }
                 }

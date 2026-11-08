@@ -175,14 +175,21 @@ pub struct NoiseSpec {
     /// Reynolds number above which the source sounds (RE_CRIT unless set: an obstacle source needs
     /// a faster, developed jet)
     pub re_crit: f64,
+    /// four low-pass stages instead of two (24 dB/octave): for a source injected mid-channel, whose
+    /// radiated spectrum tilts up like a dipole's
+    pub steep: bool,
 }
 
 impl NoiseSpec {
     pub fn new(src: usize, fwd: usize, bwd: usize, gain: f64) -> Self {
-        NoiseSpec { src, fwd, bwd, gain, lowpass_hz: 7000.0, highpass_hz: 400.0, re_crit: RE_CRIT }
+        NoiseSpec { src, fwd, bwd, gain, lowpass_hz: 7000.0, highpass_hz: 400.0, re_crit: RE_CRIT, steep: false }
     }
     pub fn re_crit(mut self, re: f64) -> Self {
         self.re_crit = re;
+        self
+    }
+    pub fn steep(mut self) -> Self {
+        self.steep = true;
         self
     }
     pub fn band(mut self, lowpass_hz: f64, highpass_hz: f64) -> Self {
@@ -209,6 +216,9 @@ pub struct NoiseSource {
     /// last Reynolds number at the source branch (telemetry)
     pub re: f64,
     re_crit: f64,
+    steep: bool,
+    lp3: f64,
+    lp4: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -751,6 +761,9 @@ impl AirwayNetwork {
                 level: 0.0,
                 re: 0.0,
                 re_crit: s.re_crit,
+                steep: s.steep,
+                lp3: prev.map_or(0.0, |p| p.lp3),
+                lp4: prev.map_or(0.0, |p| p.lp4),
             });
         }
         core::mem::swap(&mut self.noise, &mut self.noise_next);
@@ -1131,11 +1144,15 @@ impl AirwayNetwork {
             let hp_out = w - s.hp;
             s.lp1 += s.lp_coef * (hp_out - s.lp1);
             s.lp2 += s.lp_coef * (s.lp1 - s.lp2);
+            if s.steep {
+                s.lp3 += s.lp_coef * (s.lp2 - s.lp3);
+                s.lp4 += s.lp_coef * (s.lp3 - s.lp4);
+            }
             s.level = amp;
             if amp == 0.0 {
                 continue;
             }
-            let v = amp * s.lp2;
+            let v = amp * if s.steep { s.lp4 } else { s.lp2 };
             if u >= 0.0 {
                 self.psrc[s.fwd] += v;
             } else {

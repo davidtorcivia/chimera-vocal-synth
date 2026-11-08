@@ -183,12 +183,21 @@ pub struct PieOptions {
     pub dorsal_re: f64,
     /// how far downstream of the constriction the dorsal source enters (cm)
     pub dorsal_offset: f64,
+    /// band edge (Hz) of the dorsal source, and a four-pole (steep) low-pass instead of two-pole. χ has a
+    /// sweet spot: darker is heard as [k] or nothing, brighter (a 4.5 kHz edge) as [s]
+    pub dorsal_lowpass: f64,
+    pub dorsal_steep: bool,
     /// the narrowing (cm²) above which the dorsal source has faded out (from 0.4× this)
     pub dorsal_area: f64,
     /// upper band edge (Hz) of the glottal aspiration noise (the engine's default 3500)
     pub glottis_lowpass: f64,
     /// multiplier on the glottal aspiration noise gain
     pub glottis_noise: f64,
+    /// aspiration colour (band edge, Hz) during h₁ [h] and h₂ [χ], set by gestures (the aspLowpass
+    /// channel); 0 = leave the voice's own. A darker breath keeps [h] in the vowel's formants and gives
+    /// χ the low-centred noise of a uvular, while stop releases and sibilants keep the voice's own colour
+    pub h_asp_lowpass: f64,
+    pub chi_asp_lowpass: f64,
     /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
     pub syl_r_trill: u32,
     /// the PIE pitch model (pie_vtl's): replaces the planner's English intonation with a line baseline
@@ -257,13 +266,17 @@ impl Default for PieOptions {
             chi_abd: 0.3,
             gh_raise: 0.0,
             syl_r_trill: 2,
-            dorsal_noise: 3.0e-5,
+            dorsal_noise: 4.8e-5,
             sibilant_lowpass: 5000.0,
-            dorsal_re: 4500.0,
+            dorsal_re: 5500.0,
             dorsal_offset: 1.6,
             dorsal_area: 0.35,
+            dorsal_lowpass: 900.0,
+            dorsal_steep: false,
             glottis_lowpass: 3500.0,
             glottis_noise: 1.0,
+            h_asp_lowpass: 1200.0,
+            chi_asp_lowpass: 0.0,
             s_tip_fwd: 0.0,
             s_lip_prot: Some(-0.3),
             s_jaw: None,
@@ -866,6 +879,14 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             let tg = Targets::default().with(ArticKey::LipAp, p.lab_ap).with(ArticKey::LipProt, p.lab_prot).with(ArticKey::LipWidth, 0.065);
             plan.gestures.push(Gesture::new(t0 - p.lab_lead, t1 + p.lab_carry, 0.03, 0.03, p.lab_str, tg).label("ʷ"));
         }
+        let colour = match s.base.as_str() {
+            "h" => p.h_asp_lowpass,
+            "χ" => p.chi_asp_lowpass,
+            _ => 0.0,
+        };
+        if colour > 0.0 {
+            plan.gestures.push(Gesture::new(t0 - 0.02, t1 + 0.015, 0.015, 0.015, 4.0, Targets::default().with(ControlKey::ASP_LOWPASS, colour)).label("breath colour"));
+        }
         if is_voiced_stop(&s.base) {
             let mut tg = Targets::default();
             if let Some(y) = p.vstop_larynx {
@@ -907,6 +928,8 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     v.airway.noise_gain.dorsal_re = p.dorsal_re;
     v.airway.noise_gain.dorsal_offset = p.dorsal_offset;
     v.airway.noise_gain.dorsal_area = p.dorsal_area;
+    v.airway.noise_gain.dorsal_lowpass = p.dorsal_lowpass;
+    v.airway.noise_gain.dorsal_steep = p.dorsal_steep;
     v.airway.noise_gain.glottis_lowpass = p.glottis_lowpass;
     v.airway.noise_gain.glottis *= p.glottis_noise;
     v.murmur_chink = p.mur_chink;

@@ -1,17 +1,17 @@
 /**
  * The engine's binary gesture records (layout version 1, crates/chimera-wasm/src/lib.rs): how
  * gestures cross into the wasm engine on the audio thread, where JSON and TextEncoder are out of
- * reach. 280 little-endian bytes per gesture; NaN marks an absent value.
+ * reach. 288 little-endian bytes per gesture; NaN marks an absent value.
  */
 import type { Gesture } from "./types.ts";
 
-export const LAYOUT_VERSION = 2;
-export const GESTURE_RECORD = 280;
+export const LAYOUT_VERSION = 3;
+export const GESTURE_RECORD = 288;
 
 /** Control keys in the engine's order: the 17 articulators, then the source channels. */
 export const CONTROL_KEYS = [
   "jaw", "tbX", "tbY", "ttX", "ttY", "ttCurl", "root", "lipAp", "lipProt", "lipWidth", "labiodental", "velum", "larynx", "epilarynx", "ventricular", "lateral", "dorsum",
-  "abduction", "closure", "breath", "f0", "vibrato", "murmur",
+  "abduction", "closure", "breath", "f0", "vibrato", "murmur", "aspLowpass",
 ] as const;
 /** offset of the label length byte: 8 header f64s, then one f64 per control key */
 const LABEL_AT = 64 + 8 * CONTROL_KEYS.length;

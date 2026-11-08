@@ -85,3 +85,26 @@ fn the_accent_rises_and_the_line_declines() {
     let last = plan.segments.last().unwrap();
     assert!(st(hz_at(first.t0)) > st(hz_at(last.t1 - 0.01)), "the line should fall");
 }
+
+/// The aspiration colour channel: a darker breath during [h] moves its noise down (less energy in the
+/// sample-to-sample differences, a proxy for the share of high frequencies), and leaves a [t] alone.
+#[test]
+fn breath_colour_darkens_h_only() {
+    let brightness = |p: &PieOptions, text: &str, ipa: &str| {
+        let o = PlanOptions { body: "male".into(), t0: 0.05, f0: Some(110.0), ..Default::default() };
+        let plan = plan_pie(text, &o, p);
+        let s = plan.segments.iter().find(|s| s.ipa == ipa).unwrap();
+        let (a, b) = if ipa == "t" { (s.t1, s.t1 + 0.03) } else { (s.t0 + 0.01, s.t1 - 0.01) };
+        let x = run(text, p, |_, _| {});
+        let seg = &x[(a * 48000.0) as usize..(b * 48000.0) as usize];
+        let e: f64 = seg.iter().map(|v| (*v as f64).powi(2)).sum();
+        let d: f64 = seg.windows(2).map(|w| ((w[1] - w[0]) as f64).powi(2)).sum();
+        d / e
+    };
+    let plain = PieOptions { h_asp_lowpass: 0.0, ..Default::default() };
+    let dark = PieOptions { h_asp_lowpass: 1200.0, ..Default::default() };
+    let (h0, h1) = (brightness(&plain, "áha", "h"), brightness(&dark, "áha", "h"));
+    assert!(h1 < 0.7 * h0, "h brightness {h0:.4} -> {h1:.4}");
+    let (t0, t1) = (brightness(&plain, "áta", "t"), brightness(&dark, "áta", "t"));
+    assert!((t1 - t0).abs() < 1e-9, "t changed: {t0} -> {t1}");
+}

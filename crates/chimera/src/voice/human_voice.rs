@@ -464,6 +464,15 @@ impl HumanVoice {
             // murmur: breathy voice that keeps vibrating. The posterior gap widens (it leaks air but,
             // unlike abduction, does not stop the folds), the open phase lengthens and the closure
             // softens, so H1 rises over H2 and aspiration noise rides on the voicing.
+            // aspiration colour: blend the gesture's band edge (log-frequency) with the voice's own
+            let al = b[ControlKey::ASP_LOWPASS.index()];
+            self.airway.asp_lowpass_now = if al.weight > 0.0 && al.value > 0.0 {
+                let w = js_min(1.0, al.weight / 2.0);
+                let base = self.airway.noise_gain.glottis_lowpass;
+                exp((1.0 - w) * base.ln() + w * al.value.ln())
+            } else {
+                f64::NAN
+            };
             let mu = b[ControlKey::MURMUR.index()];
             let m = if mu.weight > 0.0 { clamp(mu.value, 0.0, 1.0) * js_min(1.0, mu.weight / 2.0) } else { 0.0 };
             gp.chink = self.base_chink + self.murmur_chink * m * k2;
@@ -494,6 +503,7 @@ impl HumanVoice {
             self.glottis.params.chink = self.base_chink;
             self.glottis.params.open_quotient = self.base_oq;
             self.glottis.params.closure_sharpness = self.base_sharp;
+            self.airway.asp_lowpass_now = f64::NAN;
             self.glottis.params.closure = self.base_closure;
             self.score_f0 = None;
         }

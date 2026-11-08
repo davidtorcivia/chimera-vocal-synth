@@ -29,9 +29,12 @@ pub enum SourceKey {
     /// murmur 0..1 (breathy voice): the folds keep vibrating with a wider posterior gap, a longer
     /// open phase and a softer closure (the murmured stops of Hindi or Proto-Indo-European)
     Murmur,
+    /// upper band edge (Hz) of the glottal aspiration noise while the gesture holds: a darker breath
+    /// for [h] and the breath of a back fricative, leaving a stop's release and the sibilants as they are
+    AspLowpass,
 }
 
-pub const N_SOURCE: usize = 6;
+pub const N_SOURCE: usize = 7;
 /// Articulators then source channels.
 pub const N_CONTROL: usize = N_ARTIC + N_SOURCE;
 
@@ -42,7 +45,7 @@ pub enum ControlKey {
     Source(SourceKey),
 }
 
-pub const SOURCE_NAMES: [&str; N_SOURCE] = ["abduction", "closure", "breath", "f0", "vibrato", "murmur"];
+pub const SOURCE_NAMES: [&str; N_SOURCE] = ["abduction", "closure", "breath", "f0", "vibrato", "murmur", "aspLowpass"];
 
 impl ControlKey {
     pub const ABDUCTION: ControlKey = ControlKey::Source(SourceKey::Abduction);
@@ -51,6 +54,7 @@ impl ControlKey {
     pub const F0: ControlKey = ControlKey::Source(SourceKey::F0);
     pub const VIBRATO: ControlKey = ControlKey::Source(SourceKey::Vibrato);
     pub const MURMUR: ControlKey = ControlKey::Source(SourceKey::Murmur);
+    pub const ASP_LOWPASS: ControlKey = ControlKey::Source(SourceKey::AspLowpass);
 
     #[inline]
     pub fn index(self) -> usize {
@@ -63,7 +67,7 @@ impl ControlKey {
         if i < N_ARTIC {
             ControlKey::Artic(ArticKey::ALL[i])
         } else {
-            ControlKey::Source([SourceKey::Abduction, SourceKey::Closure, SourceKey::Breath, SourceKey::F0, SourceKey::Vibrato, SourceKey::Murmur][i - N_ARTIC])
+            ControlKey::Source([SourceKey::Abduction, SourceKey::Closure, SourceKey::Breath, SourceKey::F0, SourceKey::Vibrato, SourceKey::Murmur, SourceKey::AspLowpass][i - N_ARTIC])
         }
     }
     pub fn name(self) -> &'static str {

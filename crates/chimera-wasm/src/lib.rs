@@ -7,7 +7,7 @@
 //! object's lifetime; JavaScript must still re-create its typed-array views whenever
 //! `memory.buffer` changes (memory growth detaches them), and copy telemetry before the next call.
 //!
-//! # Gesture records (layout version 2, [`GESTURE_RECORD`] = 280 bytes, little-endian)
+//! # Gesture records (layout version 3, [`GESTURE_RECORD`] = 288 bytes, little-endian)
 //! | offset | type        | field |
 //! |-------:|-------------|-------|
 //! | 0      | f64         | t0 |
@@ -18,10 +18,10 @@
 //! | 40     | f64         | speed (NaN: absent) |
 //! | 48     | f64         | releaseHold (NaN: absent) |
 //! | 56     | f64         | tag (NaN: absent) |
-//! | 64     | 23 × f64    | targets in ControlKey order: the 17 articulators (ArticKey order), then abduction, closure, breath, f0, vibrato, murmur (NaN: absent) |
-//! | 248    | u8          | label length in bytes (255: no label) |
-//! | 249    | 24 × u8     | label, UTF-8, cut at a character boundary |
-//! | 273    | 7 × u8      | padding |
+//! | 64     | 24 × f64    | targets in ControlKey order: the 17 articulators (ArticKey order), then abduction, closure, breath, f0, vibrato, murmur, aspLowpass (NaN: absent) |
+//! | 256    | u8          | label length in bytes (255: no label) |
+//! | 257    | 24 × u8     | label, UTF-8, cut at a character boundary |
+//! | 281    | 7 × u8      | padding |
 //!
 //! # Beat-step records ([`STEP_RECORD`] = 48 bytes, in the same record area)
 //! | offset | type     | field |
@@ -40,11 +40,11 @@ use chimera::engine::{Engine, MAX_SCHEDULE};
 use chimera::phonetics::beatbox::BeatStep;
 use chimera::voice::human_voice::{SourcePatch, VoiceTelemetry};
 
-pub const GESTURE_RECORD: usize = 280;
+pub const GESTURE_RECORD: usize = 288;
 /// offset of the label length byte (after the 8 header fields and the N_CONTROL targets)
 const LABEL_AT: usize = 64 + 8 * N_CONTROL;
 pub const STEP_RECORD: usize = 48;
-pub const LAYOUT_VERSION: u32 = 2;
+pub const LAYOUT_VERSION: u32 = 3;
 /// Largest `engine_render` request (frames).
 pub const MAX_RENDER: usize = 4096;
 
