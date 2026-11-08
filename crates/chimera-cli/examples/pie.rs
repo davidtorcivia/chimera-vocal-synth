@@ -121,12 +121,13 @@ fn main() {
     }
     chimera::init();
     let mut voice = HumanVoice::new(FS, body, 2);
+    // the PIE voice (source and noise settings), then any src: overrides on top
+    chimera::phonetics::pie::setup_voice(&mut voice, f0, &p);
     src_patch.f0 = Some(f0);
     voice.set_source(&src_patch);
     voice.airway.noise_gain.glottis *= ng[0];
     voice.airway.noise_gain.constriction *= ng[1];
     voice.airway.noise_gain.teeth *= ng[2];
-    voice.airway.noise_gain.dorsal = p.dorsal_noise;
     let mut end = 0.0f64;
     for u in src["utterances"].as_array().unwrap() {
         let start = u["start"].as_f64().unwrap() + 0.3; // 0.3 s of room for the first breath

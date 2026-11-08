@@ -146,8 +146,17 @@ pub struct PieOptions {
     pub dorsal_noise: f64,
     /// upper band edge (Hz) of the sibilant (teeth) noise source; the engine's default is 5000
     pub sibilant_lowpass: f64,
+    /// /s/: tongue tip forward (cm) and lips spread (their protrusion target; `None` leaves the lips
+    /// to the vowels), which shorten the cavity in front of the constriction and raise its resonance
+    pub s_tip_fwd: f64,
+    pub s_lip_prot: Option<f64>,
+    /// /s/: jaw opening target (`None`: the inventory's 0.3) and tongue tip height change (cm)
+    pub s_jaw: Option<f64>,
+    pub s_tip_up: f64,
     /// Reynolds threshold of the dorsal source (the engine's general one is 1800)
     pub dorsal_re: f64,
+    /// how far downstream of the constriction the dorsal source enters (cm)
+    pub dorsal_offset: f64,
     /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
     pub syl_r_trill: u32,
     /// pause between phrases (s)
@@ -190,9 +199,14 @@ impl Default for PieOptions {
             chi_abd: 0.3,
             gh_raise: 0.0,
             syl_r_trill: 2,
-            dorsal_noise: 6.0e-5,
-            sibilant_lowpass: 9000.0,
+            dorsal_noise: 3.0e-5,
+            sibilant_lowpass: 5000.0,
             dorsal_re: 4500.0,
+            dorsal_offset: 1.6,
+            s_tip_fwd: 0.0,
+            s_lip_prot: Some(-0.3),
+            s_jaw: None,
+            s_tip_up: 0.0,
             pause: 0.3,
         }
     }
@@ -538,6 +552,21 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                     g.targets.set(ArticKey::TbY, y + p.e_raise);
                 }
             }
+            "s" if g.strength >= 40.0 => {
+                if let Some(x) = g.targets.get(ArticKey::TtX) {
+                    g.targets.set(ArticKey::TtX, x + p.s_tip_fwd);
+                }
+                if let Some(y) = g.targets.get(ArticKey::TtY) {
+                    g.targets.set(ArticKey::TtY, y + p.s_tip_up);
+                }
+                if let Some(j) = p.s_jaw {
+                    g.targets.set(ArticKey::Jaw, j);
+                }
+                if let Some(lp) = p.s_lip_prot {
+                    g.targets.set(ArticKey::LipProt, lp);
+                    g.targets.set(ArticKey::LipWidth, 1.0);
+                }
+            }
             "j" => {
                 if let Some(y) = g.targets.get(ArticKey::TbY) {
                     g.targets.set(ArticKey::TbY, y + p.j_raise);
@@ -657,6 +686,7 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     v.airway.noise_gain.dorsal = p.dorsal_noise;
     v.airway.noise_gain.teeth_lowpass = p.sibilant_lowpass;
     v.airway.noise_gain.dorsal_re = p.dorsal_re;
+    v.airway.noise_gain.dorsal_offset = p.dorsal_offset;
 }
 
 /// Plan PIE text (see [`parse_pie`]), phrase after phrase from `o.t0`.

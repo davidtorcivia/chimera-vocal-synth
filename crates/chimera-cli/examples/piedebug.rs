@@ -40,6 +40,14 @@ fn main() {
             let all: Vec<f64> = air.ph_min.iter().chain(air.or_min.iter()).cloned().collect();
             let (mi, ma) = all.iter().enumerate().filter(|(_, a)| **a > 0.0).fold((0, f64::INFINITY), |m, (i, a)| if *a < m.1 { (i, *a) } else { m });
             println!("t={:.3} narrowest #{mi}/{} (pharynx {}) area {ma:.3} cm²  glottis area {:.3}", t, all.len(), air.n_ph, v.glottis.area);
+            if std::env::var("AREAS").is_ok() {
+                if let Some(f) = &air.frame {
+                    println!("   length {:.2} pharynx {:.2} teeth_s {:.2} lip_s {:.2}", f.length, f.pharynx_length, f.teeth_s, f.lip_s);
+                    let dx_or = air.or_len / air.or_min.len() as f64;
+                    let row: Vec<String> = air.or_min.iter().enumerate().map(|(i, a)| format!("{:.2}@{:.1}", a, air.ph_len + (i as f64 + 0.5) * dx_or)).collect();
+                    println!("   oral (area@s): {}", row.join(" "));
+                }
+            }
             for s in air.net.noise_sources() {
                 println!("   noise src {} gain {:.1e} level {:.3e} Re {:.0}", s.src, s.gain, s.level, s.re);
             }

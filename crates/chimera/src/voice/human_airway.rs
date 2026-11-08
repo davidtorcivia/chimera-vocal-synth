@@ -22,6 +22,8 @@ pub struct NoiseGains {
     /// Reynolds number above which the dorsal obstacle source sounds: it needs the fast jet of a
     /// voiceless fricative, not the slower flow of a voiced glide through the same narrowing
     pub dorsal_re: f64,
+    /// how far downstream of the constriction the dorsal source enters (cm, body-scaled)
+    pub dorsal_offset: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -147,7 +149,7 @@ impl HumanAirway {
             frame: None,
             ph_len: 8.8,
             or_len: 8.3,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -329,7 +331,7 @@ impl HumanAirway {
                     let w_narrow = 1.0 - smooth(0.25 * k2, 0.6 * k2, min_a);
                     let wd = w_back * w_narrow;
                     if wd > 1e-3 {
-                        let off2 = js_max(1.0, js_round((1.6 * self.body.scale) / dx)) as isize;
+                        let off2 = js_max(1.0, js_round((g.dorsal_offset * self.body.scale) / dx)) as isize;
                         let db = to_branch((n_tot - 2).min(min_i + off2));
                         if db >= 0 {
                             list.push(NoiseSpec::new(src as usize, db as usize, bwd as usize, g.dorsal * wd).band(900.0, 300.0).re_crit(g.dorsal_re));
