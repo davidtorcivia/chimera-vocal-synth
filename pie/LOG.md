@@ -16,6 +16,7 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-08 | the [w] glide after kʷ gʷ 10 ms instead of 30 (kʷ 24 → 13 % on a kʷe set) | 28.3 % | 28.4 % | |
 | 2026-11-08 | dark l: l gets its own tongue body (back, lowered; it had none) — l 48 → 8 %, l̩ 59 → 35 % | 27.7 % | 27.6 % | 27.4 → 33.8 % (pilot 3, 1,110 credits) |
 | 2026-11-08 | u: tongue less retracted, tighter lips — it nearly closed on the velum (0.01 cm², voicing lost, 25 dB under a in pápu); weak u 27 → 7 % | 27.4 % | 27.5 % | |
+| 2026-11-08 | u midpoint (u_back −0.2, lips 0.16): male F2 back to +28 Hz of reference (the first fix fronted it +132); weak u 10 %; the female u stays ~150 Hz front because backing it re-closes the velar passage | 27.3 % | 27.0 % | |
 
 Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
 36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %
