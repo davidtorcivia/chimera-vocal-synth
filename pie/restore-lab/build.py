@@ -76,6 +76,11 @@ table.t td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     <p class="hint">On top of steps 1 and 2. The converter weakens the release bursts of p t k by 3-8 dB. Two repairs: a fixed lift of 2-8 kHz in the 18 ms after each release, and a per-burst fill of half of that burst's own shortfall against the source (its loudness relative to the next vowel). Neither helps the recognizer except for Valeria, and naturalness does not move; this is for your ear: does it sound crisper, or harsher?</p>
     <div id="step3" style="display:grid;gap:30px"></div>
   </section>
+  <section>
+    <h2>Step 4 · the trill</h2>
+    <p class="hint">On top of steps 1-3. The old corpus's re-trill: in every r the timeline marks as a trill (word-initial or after a consonant; taps are left alone), each 40 ms cycle's contact is cut to −20 dB re the next vowel for 40 % of the cycle, with 5 ms cosine edges, unless the converter already kept it. The table gives the share of trills with two or more contacts.</p>
+    <div id="step4" style="display:grid;gap:30px"></div>
+  </section>
 </div>
 
 <script>
@@ -160,6 +165,22 @@ for (const v of D.step3) {
   host3.append(el);
   let sel = v.clips[0].id;
   const vers = id => V3.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
+  const head = c => `<div class="words">${c.words}</div>`;
+  const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
+  const list = el.querySelector('.list');
+  const render = () => { list.innerHTML = ''; for (const c of v.clips) { const b = document.createElement('button'); b.type = 'button'; b.className = 'row'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', c.id === sel);
+    b.innerHTML = `<span>${c.words}</span><span class="d">${c.dur.toFixed(1)} s</span>`; b.onclick = () => { sel = c.id; pl.load(vers(c.id), head(c)); render(); pl.play(); }; list.append(b); } };
+  render();
+}
+const host4 = document.getElementById('step4');
+const V4 = [['c3', 'Steps 1-3'], ['tr_old', 'Re-trilled']];
+for (const v of D.step4) {
+  const el = document.createElement('div'); el.className = 'voice';
+  const rows = v.rows.map((r, i) => `<tr><td>${V4[i][1]}</td><td class="n">${r.c2}%</td><td class="n">${r.miss}%</td><td class="n">${r.mos.toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = `<div class="vhead"><h3>${v.name}</h3></div><div style="overflow-x:auto"><table class="t"><thead><tr><th>Version</th><th>Trills with 2+ contacts</th><th>Misses</th><th>Naturalness</th></tr></thead><tbody>${rows}</tbody></table></div><div class="player"></div><div class="list" role="listbox" aria-label="${v.name} clips"></div>`;
+  host4.append(el);
+  let sel = v.clips[0].id;
+  const vers = id => V4.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
   const head = c => `<div class="words">${c.words}</div>`;
   const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
   const list = el.querySelector('.list');
