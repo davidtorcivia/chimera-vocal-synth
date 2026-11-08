@@ -150,6 +150,7 @@ def main():
     ap.add_argument("--wavdir", default="", help="score these WAVs (same names, on the VTL timeline) instead")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", default="", help="a file of stems: score only these")
+    ap.add_argument("--render-only", action="store_true", help="render, skip the wav2vec2 scoring (pie/gop.py scores)")
     a = ap.parse_args()
     out = DATA / "runs" / a.run
     (out / "wav").mkdir(parents=True, exist_ok=True)
@@ -179,6 +180,9 @@ def main():
                 raise SystemExit(f"{stem}: {r.stderr[-2000:]}")
         with ThreadPoolExecutor(a.jobs) as ex:
             list(ex.map(render, jobs))
+    if a.render_only:
+        print(f"{a.run}: rendered {len(jobs)} files")
+        return
     sys.path.insert(0, str(Path.home() / "AI/PIE/tts/vc"))
     import librosa
     import recognize as R
