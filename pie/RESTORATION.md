@@ -16,6 +16,14 @@ Converter helps: χ 53 → 23 %, d 34 → 22, ə 82 → 71, t 26 → 18, r̩ 38 
 Converter hurts: kʷ 23 → 44 (heard k: rounding lost), k 15 → 31, p 20 → 28 (heard b), j 38 → 45, w 34 → 42,
 r 29 → 36, e 14 → 20, o 5 → 10, s 10 → 14. Blind spots (both): c, ɟ, bʱ, dʱ, gʱ.
 
+## Damage map, all four voices (full sets; source → converted broad misses)
+Whole sets: Zazy 26.9 → 28.4 %, Antonio 26.9 → 28.6, Valeria 29.5 → 30.5, W02 29.5 → 31.6 (conversion costs only
+1-2 points overall). Same clips: Zazy 28.5 vs Antonio 28.6 (1,210 male; a tie); Valeria 30.4 vs W02 31.6 (1,212
+female; Valeria better on 642 clips, worse on 429).
+Consistent losses in every voice: kʷ +16-22 points, k +15-19, j +7-15, w +7-16, r +7-11, m +4-7, p +3-8;
+female only: s +12-16 (11 → 23-27 %), u +12-17 (23 → 35-40 %), n +4-5. Consistent gains: χ −22 to −30, d −10 to −13,
+t −6 to −10, ə −8 to −12, h −3 to −5, gʷ (female) −8 to −12.
+
 ## Phases
 0. Measure: the damage map for all four voices, plus acoustic measures per span — murmur H1*-H2*/CPP, trill
    contacts, h and χ band energy, VOT and burst energy for p t k, F2 transitions for kʷ gʷ w j, vowel formants,
