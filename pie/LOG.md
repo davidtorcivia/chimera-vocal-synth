@@ -90,3 +90,7 @@ female 36.8-39.5 — all inside the repeat spread. Murmur 17-19 / 21 missed in e
 hr-Ivana −64, es-Sandra −62, W02 −46 dB; cs-Hanka 8.9 kHz and el-Jane 12.4 kHz band (dull); de-Tristan −30 dB
 (noisy). Best-of-two conversions: 34.4 → 31.1 % when chosen and scored on the same sounds, ±0.9 when chosen on
 half and scored on the other half — no real gain.
+
+Owner's choice by ear (2026-11-08): male voice Czech Zazy (U48DQ1c9SVmD2BVCSiHL) first, then Spanish Antonio, then
+Italian Carmelo ("sounds the most native, less like it's wearing a suit"); female stays W02-PIE (every library
+female sounds too thin; W02 has the best mic and voice quality).
