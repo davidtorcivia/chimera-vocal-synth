@@ -324,3 +324,45 @@ def burst_spans(ph, dur=0.02, alpha=1.0):
             vm0, vm1 = nx["t0"] + 0.3 * (nx["t1"] - nx["t0"]), nx["t1"] - 0.3 * (nx["t1"] - nx["t0"])
             out.append((p["t1"] - 0.004, p["t1"] + dur, vm0, vm1, alpha))
     return out
+
+
+# ------------------------------------------------------------------ trill by envelope transfer
+def trill_windows(ph):
+    out = []
+    for i, p in enumerate(ph):
+        if p["b"] != "r" or p["syl"]:
+            continue
+        pv = ph[i - 1] if i > 0 else None
+        nx = ph[i + 1] if i + 1 < len(ph) else None
+        both = pv is not None and nx is not None and is_vowel(pv) and is_vowel(nx)
+        mid = 0.5 * (p["t0"] + p["t1"])
+        out.append((mid - 0.055, mid + 0.055) if both else (p["t0"] - 0.01, p["t1"] + 0.01))
+    return out
+
+
+def fix_trill_env(x, guide, sr, ph, lo=500.0, hi=3500.0, floor_db=-20.0, ceil_db=3.0, smooth=0.0025):
+    """Give the converted r, above `lo`, the closure rhythm of `guide` (the Chimera source, or a sibling conversion
+    of the same sentence): the guide's lo-hi band envelope normalized to its peak in the window, over the converted
+    one's. The band below `lo` (voicing) is untouched. Zero-phase band split; gains ramped."""
+    from scipy.signal import hilbert
+    low = sosfiltfilt(butter(4, lo, btype="low", fs=sr, output="sos"), x)
+    rest = x - low
+    gm = bandpass(guide, sr, lo, hi)
+    xm = bandpass(x, sr, lo, hi)
+    k = max(1, int(smooth * sr))
+    ker = np.hanning(2 * k + 1); ker /= ker.sum()
+    env = lambda y: np.convolve(np.abs(hilbert(y)), ker, mode="same")
+    eg, ex = env(gm), env(xm)
+    gain_db = np.zeros(len(x))
+    wsum = np.zeros(len(x))
+    for a, b in trill_windows(ph):
+        ia, ib = max(0, int(a * sr)), min(len(x), int(b * sr))
+        if ib - ia < int(0.02 * sr):
+            continue
+        ng = eg[ia:ib] / (eg[ia:ib].max() + 1e-12)
+        nx_ = ex[ia:ib] / (ex[ia:ib].max() + 1e-12)
+        gd = np.clip(20 * np.log10((ng + 1e-6) / (nx_ + 1e-6)), floor_db, ceil_db)
+        w = ramp_window(len(x), sr, a, b, 0.008)[ia:ib]
+        gain_db[ia:ib] += gd * w
+        wsum[ia:ib] = np.maximum(wsum[ia:ib], w)
+    return low + rest * 10 ** (gain_db / 20)

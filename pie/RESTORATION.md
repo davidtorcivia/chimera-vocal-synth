@@ -79,3 +79,10 @@ LPC-domain formant edits keeping the residual (Kuwabara & Takagi 1987) for kʷ a
 pitch-synchronous, LPC-shaped aspiration noise (Klatt & Klatt 1990; Hermes 1991) — an H1 boost alone reads as
 nasality in a high voice; trills: transfer the source's 500-3,500 Hz envelope only, leave <500 Hz (voicing) intact
 (a 2026 IberSPEECH paper cited, not verified); pre-distortion literature is thin.
+
+Step 3 decided (owner): half fill (contrast transfer, alpha 0.5) for all four voices.
+Step 4 (trill, on steps 1-3) — no repair kept. Envelope transfer from the source above 500 Hz (`fix_trill_env`): UTMOS
+−0.06 to −0.17, r unchanged; softer (−12 dB floor) still −0.04 to −0.14; synthetic dips (8 dB) −0.05 to −0.13, r
+unchanged. Root cause: by a mid-band (500-3,500 Hz) closure detector even the Chimera source has almost no contacts
+(78-88 % of r none, 0 % two or more): its "contacts" are low-frequency loudness dips from the voicing. Fix belongs in
+the engine (tongue-tip closures deep enough to interrupt the mid band), then reconversion; added to the engine list.
