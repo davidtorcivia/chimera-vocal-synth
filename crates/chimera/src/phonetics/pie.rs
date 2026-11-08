@@ -165,6 +165,10 @@ pub struct PieOptions {
     /// tongue body for l (None: whatever the neighbours leave); a back, lowered body is a dark l
     pub l_tb_x: Option<f64>,
     pub l_tb_y: Option<f64>,
+    /// tongue body across r and r̥ (None: the planner's weak coronal shape), held at strength r_tb_str
+    pub r_tb_x: Option<f64>,
+    pub r_tb_y: Option<f64>,
+    pub r_tb_str: f64,
     /// ḱ ǵ ǵʰ: tongue body forward (cm) of the inventory's palatal stop, whose contact sits near the
     /// middle of the hard palate (a fronted [k]); a true [c] closes further forward
     pub c_front: f64,
@@ -298,6 +302,9 @@ impl Default for PieOptions {
             coronal_front: 0.2,
             l_tb_x: Some(2.0),
             l_tb_y: Some(5.4),
+            r_tb_x: None,
+            r_tb_y: None,
+            r_tb_str: 6.0,
             i_raise: 0.22,
             i_jaw: -0.1,
             e_raise: 0.1,
@@ -1002,6 +1009,18 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                     }
                 }
             }
+        }
+    }
+    if p.r_tb_x.is_some() || p.r_tb_y.is_some() {
+        for i in (0..n).filter(|&i| segs_in[i].base == "r") {
+            let mut tg = Targets::default();
+            if let Some(x) = p.r_tb_x {
+                tg.set(ArticKey::TbX, x);
+            }
+            if let Some(y) = p.r_tb_y {
+                tg.set(ArticKey::TbY, y);
+            }
+            plan.gestures.push(Gesture::new(ps[i].t0, ps[i].t1, 0.02, 0.02, p.r_tb_str, tg).label("r body"));
         }
     }
     for (i, s) in segs_in.iter().enumerate() {
