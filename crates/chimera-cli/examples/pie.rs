@@ -75,6 +75,13 @@ fn main() {
     let mut f0_opt = 0.0;
     for kv in a.iter().skip(4) {
         let (k, v) = kv.split_once('=').unwrap_or_else(|| panic!("option {kv:?} is not key=value"));
+        // f.key=value and m.key=value apply to one body only
+        let k = match k.split_once('.') {
+            Some(("f", rest)) if body_name == "female" => rest,
+            Some(("m", rest)) if body_name == "male" => rest,
+            Some(("f", _)) | Some(("m", _)) => continue,
+            _ => k,
+        };
         if let Some(x) = k.strip_prefix("map:") {
             remap.insert(x.to_string(), v.to_string());
         } else if let Some(x) = k.strip_prefix("shift:") {

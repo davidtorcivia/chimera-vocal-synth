@@ -13,6 +13,7 @@ phoneme count as right), unless marked otherwise. Dev and held-out test are halv
 | 2026-11-07 | χ back to the first pilot's single-point, brighter source (G1) | 30.0 % | 30.2 % | χ/s set: 27.7 → 36.0 % became 26.4 → 32.6 % (two conversions) |
 | 2026-11-08 | trill gets 110 ms (from its neighbours) instead of 90: r 44 → 27 % missed | 29.4 % | 29.7 % | |
 | 2026-11-08 | velum lowers 20 ms before a nasal over 20 ms (was 70 ms, English-like) | 28.6 % | 29.3 % | |
+| 2026-11-08 | the [w] glide after kʷ gʷ 10 ms instead of 30 (kʷ 24 → 13 % on a kʷe set) | 28.3 % | 28.4 % | |
 
 Conversion tests (`pie/convtest.py`, 12 dev sentences rich in χ and s, 678 credits each): today's χ converted 36.0 and
 36.5 % on two runs (the converter's run-to-run spread is about half a point); the pilot's χ source alone 31.7 %
@@ -44,3 +45,10 @@ blind spots), ə 17 %, ʁ 28 %, kʷ 34 %, χ 48 %, j 50 %, w 57 %, h 65 %, r 89 
 Konkani words. Chimera's j, w and ə are already at or above the human rate; r was far below (61 %) and is the
 reason for the longer trill. Converter noise: the same render converted twice differs by ~2 points on 12
 sentences, so conversion tests only catch large effects.
+
+Tried and not kept (2026-11-08): releasing an obstruent before h early (h +2, s -2 points); a closer o (-1);
+female-only e/i/coronal settings (within noise; the female gap of ~3 points is the recognizer's, VTL shows it too);
+weaker voice bar for d (d before a consonant is heard as n; no setting helped, and it is 0.6 % of misses); a
+stronger or longer murmur (heard less, not more). An apparent leak in t/d closures was the debug print, not the
+airway: mouth pressure equals lung pressure and nothing flows. Tools: `piedebug` PIE_GESTURES=t0,t1 lists active
+gestures; the `pie` example takes f.key=value / m.key=value for one voice only.

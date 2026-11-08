@@ -261,7 +261,7 @@ impl Default for PieOptions {
             lab_str: 1.2,
             lab_carry: 0.03,
             lab_lead: 0.02,
-            lab_glide: 0.03,
+            lab_glide: 0.01,
             pal_glide: 0.0,
             pal_fric: 0.0,
             vot: 0.015,

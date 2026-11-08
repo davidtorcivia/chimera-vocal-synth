@@ -35,6 +35,14 @@ fn main() {
         print!("{}@{:.3} ", s.ipa, s.t0);
     }
     println!();
+    // PIE_GESTURES=t0,t1 lists the gestures active in that window
+    if let Ok(w) = std::env::var("PIE_GESTURES") {
+        let (a, b) = w.split_once(',').map(|(a, b)| (a.parse::<f64>().unwrap(), b.parse::<f64>().unwrap())).unwrap();
+        for g in plan.gestures.iter().filter(|g| g.t1 + g.ramp_out > a && g.t0 - g.ramp_in < b) {
+            let tg: Vec<String> = g.targets.iter().map(|(k, x)| format!("{}={x:.2}", k.name())).collect();
+            println!("  {:10} {:.3}-{:.3} in {:.3} out {:.3} str {:4.1}  {}", g.label_str(), g.t0, g.t1, g.ramp_in, g.ramp_out, g.strength, tg.join(" "));
+        }
+    }
     v.schedule(&plan.gestures);
     let mut buf = vec![0f32; 128];
     let mut t = 0.0;
