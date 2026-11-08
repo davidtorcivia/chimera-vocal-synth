@@ -58,3 +58,30 @@ fn murmured_release_stays_voiced() {
     let mean = voicing.iter().sum::<f64>() / voicing.len() as f64;
     assert!(mean > 0.5, "voicing after the murmured release {mean:.2}");
 }
+
+/// The pitch accent: the accented vowel's planned pitch stands above the unaccented ones around it,
+/// by about the model's accent range, and the line declines.
+#[test]
+fn the_accent_rises_and_the_line_declines() {
+    use chimera::control::score::ControlKey;
+    let o = PlanOptions { body: "male".into(), t0: 0.05, f0: Some(110.0), ..Default::default() };
+    let p = PieOptions::default();
+    let plan = plan_pie("ph₂tḗr bʰréh₂tēr", &o, &p);
+    let hz_at = |t: f64| {
+        plan.gestures
+            .iter()
+            .filter(|g| g.label_str() == "pitch" && g.t0 <= t && t < g.t1)
+            .filter_map(|g| g.targets.get(ControlKey::F0))
+            .next()
+            .unwrap()
+    };
+    let st = |hz: f64| 12.0 * (hz / 110.0).log2();
+    let nuc: Vec<_> = plan.segments.iter().filter(|s| s.ipa.starts_with(['a', 'e', 'o'])).collect();
+    let acc = nuc.iter().find(|s| s.ipa.contains('\u{301}')).unwrap();
+    let un = nuc.iter().find(|s| !s.ipa.contains('\u{301}')).unwrap();
+    let lift = st(hz_at(0.5 * (acc.t0 + acc.t1))) - st(hz_at(0.5 * (un.t0 + un.t1)));
+    assert!(lift > 0.6 * p.accent_st, "accent lift {lift:.2} st");
+    let first = plan.segments.first().unwrap();
+    let last = plan.segments.last().unwrap();
+    assert!(st(hz_at(first.t0)) > st(hz_at(last.t1 - 0.01)), "the line should fall");
+}

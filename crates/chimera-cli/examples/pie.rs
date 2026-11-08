@@ -16,7 +16,7 @@
 //!   shift:L=dt    move the gestures labelled L by dt seconds
 use chimera::anatomy::human::{ArticKey, BODY_FEMALE, BODY_MALE};
 use chimera::control::score::ControlKey;
-use chimera::phonetics::pie::{PieOptions, PieSeg, plan_pie_utterance};
+use chimera::phonetics::pie::{LineSpan, PieOptions, PieSeg, plan_pie_utterance_in};
 use chimera::phonetics::planner::PlanOptions;
 use chimera::voice::human_voice::{HumanVoice, SourcePatch};
 use serde_json::{Map, Value};
@@ -152,7 +152,13 @@ fn main() {
             })
             .collect();
         let o = PlanOptions { body: body_name.into(), t0: start - LEAD, f0: Some(f0), ..Default::default() };
-        let mut plan = plan_pie_utterance(&segs, false, &o, &p);
+        // the line this breath group belongs to (eval.py adds it), shifted like the group
+        let line = u.get("line_start").and_then(|x| x.as_f64()).map(|ls| LineSpan {
+            start: ls + 0.3,
+            end: u["line_end"].as_f64().unwrap() + 0.3,
+            ends_line: u["ends_line"].as_bool().unwrap_or(true),
+        });
+        let mut plan = plan_pie_utterance_in(&segs, false, line, &o, &p);
         for g in plan.gestures.iter_mut() {
             for (label, dt) in &shifts {
                 if g.label_str() == label {

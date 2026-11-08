@@ -22,7 +22,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 DATA = Path(os.environ.get("CHIMERA_PIE_DATA", Path.home() / "AI/chimera-pie-data"))
-BIN = ROOT / "target/release/examples/pie"
+BIN = Path(os.environ.get("CHIMERA_PIE_BIN", ROOT / "target/release/examples/pie"))
 GAP = 0.12
 VOW = set("aeiouə")
 MODS = "ʷʱʰ̩̥ːˈ́"
@@ -35,7 +35,11 @@ def base(ph):
 def utterances(vtl_json):
     """VTL phones -> breath groups of segments with exact durations (as the `pie` example reads them)."""
     d = json.load(open(vtl_json))
-    phones = [(p, i == 0, i == len(w["phones"]) - 1) for w in d["words"] for i, p in enumerate(w["phones"])]
+    phones = [(dict(p, _line=w.get("line", 0)), i == 0, i == len(w["phones"]) - 1) for w in d["words"] for i, p in enumerate(w["phones"])]
+    lines = {}
+    for w in d["words"]:
+        lo, hi = lines.get(w.get("line", 0), (w["start"], w["end"]))
+        lines[w.get("line", 0)] = (min(lo, w["start"]), max(hi, w["end"]))
     utts, cur = [], None
     for p, first, last in phones:
         if cur is None or p["start"] - cur["end"] >= GAP:
@@ -54,6 +58,10 @@ def utterances(vtl_json):
             "word_end": last, "word_start": first,
         })
         cur["end"] = p["end"]
+        cur["_line"] = p["_line"]
+    for u in utts:   # the line each breath group belongs to, for the pitch model's declination
+        lo, hi = lines[u.pop("_line")]
+        u["line_start"], u["line_end"], u["ends_line"] = lo, hi, abs(u["end"] - hi) < 0.02
     return {"duration": d["duration"], "utterances": utts}
 
 

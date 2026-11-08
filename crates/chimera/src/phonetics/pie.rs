@@ -174,6 +174,20 @@ pub struct PieOptions {
     pub glottis_noise: f64,
     /// syllabic r̥: 0 = an [ɹ̩]-like approximant; n > 0 = a vocoid with n trill contacts across its middle
     pub syl_r_trill: u32,
+    /// the PIE pitch model (pie_vtl's): replaces the planner's English intonation with a line baseline
+    /// falling from `decl_start` to `decl_end` (st re the base pitch), a fall of `final_fall` st through
+    /// the line's last word (a rise of `question_rise` for questions), and on every accented nucleus a
+    /// raised-cosine bump of `accent_st` st (rising over `accent_rise` s, falling over `accent_fall` s;
+    /// overlapping bumps do not stack), with a dip of `breathy_dip_st` after a murmured stop
+    pub pie_pitch: bool,
+    pub accent_st: f64,
+    pub decl_start: f64,
+    pub decl_end: f64,
+    pub final_fall: f64,
+    pub question_rise: f64,
+    pub accent_rise: f64,
+    pub accent_fall: f64,
+    pub breathy_dip_st: f64,
     /// pause between phrases (s)
     pub pause: f64,
 }
@@ -189,17 +203,17 @@ impl Default for PieOptions {
             lab_lead: 0.02,
             lab_glide: 0.03,
             pal_glide: 0.0,
-            vot: 0.03,
-            asp_ab: 0.28,
+            vot: 0.015,
+            asp_ab: 0.22,
             mur_ab: 0.0,
             mur_dur: 0.06,
             mur_dip: 0.11,
             mur_level: 0.7,
             mur_chink: 0.1,
             mur_oq: 0.2,
-            vstop_larynx: Some(-0.5),
-            vstop_str: 3.0,
-            vstop_root: None,
+            vstop_larynx: Some(-1.0),
+            vstop_str: 6.0,
+            vstop_root: Some(0.8),
             trill_n: 3,
             trill_min: 0.09,
             trill_close: 0.4,
@@ -214,7 +228,7 @@ impl Default for PieOptions {
             w_tb_x: 2.1,
             w_tb_y: -0.15,
             glide_lip_ap: 0.12,
-            chi_raise: 0.0,
+            chi_raise: 0.07,
             chi_abd: 0.3,
             gh_raise: 0.0,
             syl_r_trill: 2,
@@ -222,13 +236,22 @@ impl Default for PieOptions {
             sibilant_lowpass: 5000.0,
             dorsal_re: 4500.0,
             dorsal_offset: 1.6,
-            dorsal_area: 0.6,
+            dorsal_area: 0.35,
             glottis_lowpass: 3500.0,
             glottis_noise: 1.0,
             s_tip_fwd: 0.0,
             s_lip_prot: Some(-0.3),
             s_jaw: None,
             s_tip_up: 0.0,
+            pie_pitch: true,
+            accent_st: 4.0,
+            decl_start: 1.5,
+            decl_end: -2.5,
+            final_fall: 2.0,
+            question_rise: 3.0,
+            accent_rise: 0.12,
+            accent_fall: 0.15,
+            breathy_dip_st: 2.0,
             pause: 0.3,
         }
     }
@@ -463,8 +486,100 @@ fn engine_ipa<'a>(s: &'a PieSeg, p: &PieOptions) -> &'a str {
     }
 }
 
-/// Plan one phrase. Segments without a duration get [`default_durations`].
+/// The line a breath group belongs to, for the pitch model: declination runs across the whole line, and
+/// the final fall (or question rise) belongs to the group that ends it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineSpan {
+    pub start: f64,
+    pub end: f64,
+    pub ends_line: bool,
+}
+
+/// Plan one phrase. Segments without a duration get [`default_durations`]. The phrase is its own line.
 pub fn plan_pie_utterance(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
+    plan_pie_utterance_in(segs_in, question, None, o, p)
+}
+
+/// Plan one breath group of a line (`line` in plan time; `None`: the group is the whole line).
+pub fn plan_pie_utterance_in(segs_in: &[PieSeg], question: bool, line: Option<LineSpan>, o: &PlanOptions, p: &PieOptions) -> Plan {
+    let mut plan = plan_glides(segs_in, question, o, p);
+    if p.pie_pitch && !plan.segments.is_empty() {
+        pie_pitch(&mut plan, segs_in, question, line, o, p);
+    }
+    plan
+}
+
+/// Replace the planner's intonation with the PIE pitch model (see [`PieOptions::pie_pitch`]).
+fn pie_pitch(plan: &mut Plan, segs: &[PieSeg], question: bool, line: Option<LineSpan>, o: &PlanOptions, p: &PieOptions) {
+    let ps = &plan.segments;
+    let n = ps.len().min(segs.len());
+    let line = line.unwrap_or(LineSpan { start: ps[0].t0, end: ps[n - 1].t1, ends_line: true });
+    let mut accents: Vec<(f64, f64)> = Vec::new();
+    let mut dips: Vec<f64> = Vec::new();
+    for i in 0..n {
+        if segs[i].is_nucleus() && segs[i].accent {
+            accents.push((ps[i].t0, ps[i].t1));
+        }
+        if segs[i].is_nucleus() && i > 0 && segs[i - 1].breathy {
+            dips.push(ps[i].t0);
+        }
+    }
+    // the line's last word, when this group ends the line
+    let final_word = if line.ends_line {
+        let k = (0..n).rev().find(|&i| segs[i].word_start).unwrap_or(0);
+        Some((ps[k].t0, ps[n - 1].t1))
+    } else {
+        None
+    };
+    let rc = |x: f64| {
+        let x = x.clamp(0.0, 1.0);
+        0.5 - 0.5 * (std::f64::consts::PI * x).cos()
+    };
+    let f = |t: f64| -> f64 {
+        let frac = ((t - line.start) / (line.end - line.start).max(1e-3)).clamp(0.0, 1.0);
+        let mut v = p.decl_start + (p.decl_end - p.decl_start) * frac;
+        if let Some((w0, w1)) = final_word {
+            if t > w0 {
+                let x = rc((t - w0) / (w1 - w0).max(1e-3));
+                v += if question { p.question_rise * x } else { -p.final_fall * x };
+            }
+        }
+        let mut bump: f64 = 0.0;
+        for &(a0, a1) in &accents {
+            if t < a0 - p.accent_rise || t > a1 + p.accent_fall {
+                continue;
+            }
+            let b = if t < a0 {
+                rc((t - (a0 - p.accent_rise)) / p.accent_rise)
+            } else if t <= a1 {
+                1.0
+            } else {
+                1.0 - rc((t - a1) / p.accent_fall)
+            };
+            bump = bump.max(b);
+        }
+        v += p.accent_st * bump;
+        for &d0 in &dips {
+            if t >= d0 - 0.01 && t <= d0 + 0.045 {
+                v -= p.breathy_dip_st * (std::f64::consts::PI * (t - d0 + 0.01) / 0.055).sin();
+            }
+        }
+        v
+    };
+    let f0 = o.f0.unwrap_or(110.0);
+    plan.gestures.retain(|g| g.label_str() != "pitch");
+    let (t_a, t_b) = (ps[0].t0 - 0.06, ps[n - 1].t1 + 0.06);
+    let step = 0.015;
+    let mut t = t_a;
+    while t < t_b {
+        let hz = f0 * 2f64.powf(f(t + 0.5 * step) / 12.0);
+        plan.gestures.push(Gesture::new(t, t + step, 0.008, 0.008, 3.0, Targets::default().with(ControlKey::F0, hz)).label("pitch"));
+        t += step;
+    }
+}
+
+fn plan_glides(segs_in: &[PieSeg], question: bool, o: &PlanOptions, p: &PieOptions) -> Plan {
     let palatal = |s: &PieSeg| s.base == "c" || s.base == "ɟ";
     let wants = |s: &PieSeg| (p.lab_glide > 0.0 && s.labial) || (p.pal_glide > 0.0 && palatal(s));
     if !segs_in.iter().any(wants) {
