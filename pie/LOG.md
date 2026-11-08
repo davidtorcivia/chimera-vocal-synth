@@ -79,3 +79,7 @@ on 24 sentences is about ±1.5 overall and ±4 per voice. VTL's raw renders pass
 median 0.84, χ 0.57 on the 326 local clips); Chimera's do not (h 0.19-0.37, χ 0.48). A 2 kHz breath band for h
 reaches 0.52 with the same h recognition but costs 0.4 points on neighbouring vowels: left off, owner to decide.
 Credits overnight: 9,540 of 12,000.
+
+Final full render (dcc37da, ~/AI/chimera-pie-data/full/chimera-v2, 4,238 clips, 0 errors): gate without the
+post-restore h/χ floors 3,225 / 4,238 pass (first u fix 3,361; before it about 2,700): voicing 408, weak vowels 665
+(the midpoint u trades a little loudness for a back u). Earlier renders kept as chimera-v2-b5b60d7 and -6f1aa07.
