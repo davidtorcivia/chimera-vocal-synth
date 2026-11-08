@@ -32,10 +32,11 @@ def main():
     ap.add_argument("--wavdir", default="")
     ap.add_argument("--offset", type=float, default=0.3)
     ap.add_argument("--set", default="")
+    ap.add_argument("--jsondir", default="", help="run whose wav/*.json give the utterance times (default: the run, or b0 with --wavdir)")
     a = ap.parse_args()
     sess = ort.InferenceSession(MODEL, providers=["CPUExecutionProvider"])
     for run in a.runs:
-        jdir = DATA / "runs" / (run if not a.wavdir else "b0") / "wav"
+        jdir = DATA / "runs" / (a.jsondir or (run if not a.wavdir else "b0")) / "wav"
         wdir = Path(a.wavdir) if a.wavdir else DATA / "runs" / run / "wav"
         groups = {}
         for uj in sorted(jdir.glob("*.json")):

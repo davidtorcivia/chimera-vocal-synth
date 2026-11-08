@@ -149,12 +149,16 @@ def main():
     ap.add_argument("--extra", default="")
     ap.add_argument("--wavdir", default="", help="score these WAVs (same names, on the VTL timeline) instead")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--only", default="", help="a file of stems: score only these")
     a = ap.parse_args()
     out = DATA / "runs" / a.run
     (out / "wav").mkdir(parents=True, exist_ok=True)
     files = sets(a.set)
     if a.limit:
         files = files[:a.limit]
+    if a.only:
+        keep = set(open(a.only).read().split())
+        files = [f for f in files if Path(f).stem in keep]
     jobs = []
     for f in files:
         stem = Path(f).stem
