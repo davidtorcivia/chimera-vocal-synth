@@ -111,6 +111,8 @@ pub struct PieOptions {
     /// share of every vowel's span (centred) kept free of the neighbouring consonants' constriction
     /// gestures: their lead and ramps are trimmed so the tract opens for even a short vowel (the
     /// inventory's ~60 ms anticipation swallowed a 55 ms schwa between s and t whole); 0 = off
+    /// an obstruent before h is fully released by this share of the h's span (negative: off)
+    pub h_release: f64,
     pub vowel_open: f64,
     /// only vowels shorter than this (s) are guarded (long vowels leave room for normal anticipation)
     pub vowel_open_max: f64,
@@ -260,6 +262,7 @@ impl Default for PieOptions {
             pal_fric: 0.0,
             vot: 0.015,
             asp_ab: 0.22,
+            h_release: -1.0,
             vowel_open: 0.3,
             vowel_open_max: 1.0,
             devoice_str: 1.5,
@@ -886,6 +889,22 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
                         g.t0 = (m + h + 0.004).min(g.t1);
                     }
                     g.ramp_in = (g.t0 - (m + h)).max(0.004);
+                }
+            }
+        }
+    }
+    if p.h_release >= 0.0 {
+        const OBSTRUENT: [&str; 13] = ["p", "b", "t", "d", "k", "g", "c", "ɟ", "s", "z", "χ", "ʁ", "ç"];
+        for i in (0..n).filter(|&i| segs_in[i].base == "h") {
+            let (a, b) = (plan.segments[i].t0, plan.segments[i].t1);
+            let r = a + p.h_release * (b - a);
+            for g in plan.gestures.iter_mut().filter(|g| g.strength >= 40.0 && OBSTRUENT.contains(&g.label_str())) {
+                if g.t0 < a && g.t1 <= b && g.t1 > a - 0.15 && g.t1 + g.ramp_out > r {
+                    // the consonant before h lets go by the time the breath is on its own
+                    if g.t1 > r - 0.004 {
+                        g.t1 = (r - 0.004).max(g.t0);
+                    }
+                    g.ramp_out = (r - g.t1).max(0.004);
                 }
             }
         }

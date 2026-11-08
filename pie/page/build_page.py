@@ -71,6 +71,13 @@ button.play { min-width: 76px; }
 .card .btns { display: flex; gap: 6px; }
 ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
 .foot { font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+.journal { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; max-width: 66ch; }
+.journal li { display: grid; gap: 2px; border-left: 2px solid var(--rule); padding-left: 12px; }
+.journal time { font: 12px var(--mono); color: var(--muted); }
+.journal li:first-child { border-left-color: var(--chim); }
+.budget { font: 13px var(--mono); color: var(--muted); }
+.lab-what td:first-child { white-space: nowrap; }
+.lab-what td.w { font-size: 14px; color: var(--muted); min-width: 16ch; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -80,6 +87,20 @@ ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 66ch; }
     <h1>Chimera speaks PIE</h1>
     <p>We forked Chimera, an open physical model of the human airway, and taught its engine Proto-Indo-European: labiovelars, murmured stops, trills, the laryngeals and the pitch accent. Then we put its renders through the same speech-to-speech conversion as our corpus. Every comparison below uses the same words on the same timing; switch versions while it plays and you stay in place.</p>
   </header>
+
+  <section id="lab">
+    <div class="eyebrow">overnight lab notebook · newest first</div>
+    <h2>Conversion tests</h2>
+    <p class="hint">Each test renders the same 12 dev sentences (24 χ, 54 s), sends them through the voice changer with the corpus settings, and scores before and after. Lower is better. The voice changer has no seed, so the same render converted twice differs a little; compare "pilot 2" with "pilot 2 again" to see how much.</p>
+    <p class="budget" id="lab-budget"></p>
+    <div class="tablebox"><table class="lab-what" id="lab-table"></table></div>
+    <div class="player" id="lab-player"></div>
+    <span class="seg" id="lab-kind"><button aria-pressed="true" data-k="1">Converted</button><button aria-pressed="false" data-k="0">Raw</button></span>
+    <div class="list" id="lab-list" role="listbox" aria-label="Test sentences"></div>
+    <h2>Journal</h2>
+    <ol class="journal" id="lab-journal"></ol>
+  </section>
+
 
   <section>
     <h2>The dawn hymn</h2>
@@ -203,6 +224,38 @@ function Player(host, versions, head) {
   return P;
 }
 
+// ---- the overnight lab
+const LAB = __LAB__;
+document.getElementById('lab-budget').textContent = `Credits used overnight: ${LAB.spent.toLocaleString()} of ${LAB.budget.toLocaleString()}`;
+{
+  const best = Math.min(...LAB.tests.filter(t => t.name !== 'vtl').map(t => t.conv));
+  document.getElementById('lab-table').innerHTML = `<thead><tr><th>Test</th><th>What changed</th><th>Raw</th><th>Converted</th><th>χ conv.</th><th>s conv.</th><th>h conv.</th></tr></thead><tbody>` +
+    LAB.tests.map(t => `<tr><td>${t.label}</td><td class="w">${t.what}</td><td class="n">${t.raw}%</td><td class="n${t.conv === best ? ' best' : ''}">${t.conv}%</td><td class="n">${t.chi}%</td><td class="n">${t.s}%</td><td class="n">${t.h}%</td></tr>`).join('') + '</tbody>';
+  const jl = document.getElementById('lab-journal');
+  for (const e of LAB.journal) { const li = document.createElement('li'); li.innerHTML = `<time>${e.t}</time><span></span>`; li.querySelector('span').textContent = e.text; jl.append(li); }
+}
+let labKind = 1, labSel = LAB.sents[0].id;
+const labVersions = id => LAB.tests.map(t => ({ label: t.label, src: `c/${t.name}/${id}-${labKind ? 'conv' : 'raw'}.mp3`, cls: t.name === 'vtl' ? 'v' : 'c' }));
+const labHead = s => `<div><div class="words">${s.words}</div><div class="ipa">${s.ipa}</div></div><span class="eyebrow">${s.voice} · ${s.dur} s</span>`;
+const labPlayer = Player(document.getElementById('lab-player'), labVersions(labSel), labHead(LAB.sents[0]));
+const labList = document.getElementById('lab-list');
+function renderLab() {
+  labList.innerHTML = '';
+  for (const s of LAB.sents) {
+    const b = document.createElement('button');
+    b.className = 'row'; b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', s.id === labSel);
+    const nums = LAB.tests.map(t => s.px[t.name] ? s.px[t.name][labKind] : '–');
+    b.innerHTML = `<span class="w">${s.words}</span><span class="e">${nums.map((n, i) => i === nums.length - 1 ? `<b>${n}%</b>` : `${n}%`).join(' · ')}</span><span class="meta">${s.voice} · ${s.dur} s · misses ${labKind ? 'after conversion' : 'raw'}, in table order</span>`;
+    b.onclick = () => { labSel = s.id; labPlayer.load(labVersions(s.id), labHead(s)); renderLab(); labPlayer.play(); };
+    labList.append(b);
+  }
+}
+renderLab();
+document.querySelectorAll('#lab-kind button').forEach(b => b.onclick = () => {
+  labKind = +b.dataset.k; document.querySelectorAll('#lab-kind button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  const s = LAB.sents.find(x => x.id === labSel); labPlayer.load(labVersions(labSel), labHead(s)); renderLab();
+});
+
 // ---- the dawn hymn
 const hy = document.getElementById('hymn');
 for (const [v, title] of [['m', 'Male'], ['f', 'Female']]) {
@@ -294,6 +347,7 @@ for (const [id, ex, note] of SOUNDS) {
 }
 </script>
 '''
+html = html.replace('__LAB__', open('lab-data.json').read())
 html = html.replace('__PILOT__', json.dumps(pilot, ensure_ascii=False))
 open('page/index.html', 'w').write(html)
 print(len(html))

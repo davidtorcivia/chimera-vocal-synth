@@ -1,0 +1,84 @@
+{
+ "credits_budget": 12000,
+ "other_credits": 1282,
+ "tests": [
+  {
+   "name": "vtl",
+   "label": "VTL",
+   "what": "The current corpus: VocalTractLab render and its existing conversion.",
+   "credits": 0,
+   "raw_run": "ct-vtl-raw",
+   "conv_run": "ct-vtl-conv",
+   "raw_dir": "corpus",
+   "conv_dir": "converted"
+  },
+  {
+   "name": "chiA",
+   "label": "pilot 2",
+   "what": "Chimera as in the second pilot (the darker two-point χ).",
+   "credits": 678
+  },
+  {
+   "name": "chiA2",
+   "label": "pilot 2 again",
+   "what": "The same render converted a second time, to see how much the voice changer varies.",
+   "credits": 678
+  },
+  {
+   "name": "chiB",
+   "label": "χ B",
+   "what": "The first pilot's single-point χ, with less and later dorsal noise.",
+   "credits": 678
+  },
+  {
+   "name": "chiC",
+   "label": "χ fix",
+   "what": "The first pilot's single-point χ at today's noise level. Adopted.",
+   "credits": 678
+  },
+  {
+   "name": "chiC2",
+   "label": "χ fix again",
+   "what": "The adopted χ fix converted a second time (same render, bit for bit).",
+   "credits": 678
+  },
+  {
+   "name": "vq1",
+   "label": "bright voice",
+   "what": "χ fix plus a brighter, rougher, slightly breathier voice (more high overtones, more pitch wobble).",
+   "credits": 678
+  },
+  {
+   "name": "sd1",
+   "label": "s + χ louder",
+   "what": "χ fix plus a higher s noise band (8.5 kHz) and 45% more χ noise.",
+   "credits": 678
+  }
+ ],
+ "journal": [
+  {
+   "t": "2026-11-07 22:55",
+   "text": "Converted the whole dawn hymn, both voices, from VocalTractLab and from Chimera (1,282 credits). Scored all five versions, including the site's Kokoro voice, by whole-hymn transcription: Chimera converted misses 41% (male) and 46% (female) of the hymn's sounds; VTL converted 52% / 64%; the site voice 54% / 59%."
+  },
+  {
+   "t": "2026-11-07 23:00",
+   "text": "Built a conversion test: 12 dev sentences with 24 χ and 54 s, rendered, converted with the corpus settings, scored before and after. Pilot 2's Chimera loses χ in the converter (58-67% missed after conversion). Going back to the first pilot's brighter single-point χ: 31.7% missed after conversion instead of 36%, s 41% to 19% missed. Held-out raw score unchanged (30.2%). Adopted and committed."
+  },
+  {
+   "t": "2026-11-07 23:10",
+   "text": "Calibrated the recognizer on real human speech: 1,000 recorded words in 95 languages (UCLA Phonetics Lab Archive) miss 44.9% of their sounds on the whole-transcription measure. Chimera's hymn is 37-43% raw on that measure, so it is at the recognizer's floor there; the per-sound score (30%) still has room."
+  },
+  {
+   "t": "2026-11-07 23:20",
+   "text": "Your harmonics question: the female voice is too steady (jitter 0.8%) and too clean (harmonics-to-noise 21 dB), and its 4-8 kHz overtones sit 28 dB under the low band (16 dB after conversion). A brighter, rougher source fixes that with no cost raw (dev 29.9% vs 30.0%) but came out 2 points worse after conversion with the same naturalness score (3.32 vs 3.30), so the corpus voice stays as it is. The converter rebuilds the voice quality itself."
+  },
+  {
+   "t": "2026-11-07 23:30",
+   "text": "h: word-initial h before a vowel is heard 80% of the time after a vowel or a pause, but only 5% of the time after s: the s's release ran 25 ms into the h. Releasing it on time helped h by 2 points and cost s about as much, so it stays off. After conversion the converter hears χ as f, s as ʃ and o as ɔ; a higher s band and a stronger χ improve raw slightly (26.1% on the test set) but converted 33.5%, again worse than the χ fix. Re-converting the χ fix to see whether its 31.7% was a lucky draw: the converter has no seed, so every conversion differs."
+  },
+  {
+   "t": "2026-11-07 23:55",
+   "text": "The χ fix converted a second time scores 33.5% after conversion, not 31.7%: the first run was a lucky draw. With 12 sentences the voice changer alone moves the result by about 1-2 points, so the bright voice (33.8%) and the louder s and χ (33.5%) are ties with the χ fix, not losses. What these tests reliably catch is a large loss like the old χ (36-36.5% against 32.6% on average). From here, small changes are judged raw on the dev and held-out sets (162 sentences each); conversions are kept for changes that are ready, about 680 credits a test."
+  }
+ ]
+}
