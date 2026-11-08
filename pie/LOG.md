@@ -107,3 +107,10 @@ Purna 37.6 % missed; W02 40.0 / 35.8 (two runs) — inseparable; blind A-D playe
 451k; male + two female voices on all female clips 677k. ElevenLabs (official page, 2026-11-08): Pro $99 / 600k
 credits a month, Scale $299 / 1.8M, Creator $22 / 121k; overage per 1k credits not published (extra TTS minute
 $0.17 on Pro, $0.18 Creator).
+
+Corpus v2 converted (2026-11-08, `pie/fullconvert.py`, plan and 3-hour subsets in `pie/cover/`): Chimera renders at
+dcc37da → ElevenLabs sts v2 (corpus settings) into Zazy (all 2,119 male clips, 5.21 h), Valeria (all 2,119 female,
+5.21 h), Antonio (1,210 male, 3.01 h) and W02 (1,212 female, 3.01 h): 6,620 conversions, 984.1 min, 713,816 credits,
+0 errors, 0 length mismatches, 0 silent; 2 W02 clips touch full scale on 1-3 samples. Output aligned with the source
+(envelope lag 0 ms median, all within ±10 ms, no drift; 300 clips checked). On the test sentences inside the corpus,
+converted misses: Zazy 28.5 % vs the old corpus's JD3 49.0 % (28 clips); Valeria 31.1 % vs W02 56.7 % (163 clips).

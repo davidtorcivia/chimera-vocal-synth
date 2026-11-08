@@ -1,0 +1,30 @@
+{
+ "renders": "/Users/david/AI/chimera-pie-data/full/chimera-v2/renders",
+ "out": "/Users/david/AI/chimera-pie-data/full/eleven-v2",
+ "voices": [
+  {
+   "tag": "ZAZY",
+   "voice_id": "U48DQ1c9SVmD2BVCSiHL",
+   "speaker": "JD3-PIE",
+   "clips": "all"
+  },
+  {
+   "tag": "VALERIA",
+   "voice_id": "JddqVF50ZSIR7SRbJE6u",
+   "speaker": "W02-PIE",
+   "clips": "all"
+  },
+  {
+   "tag": "ANTONIO",
+   "voice_id": "htFfPSZGJwjBv1CL0aMD",
+   "speaker": "JD3-PIE",
+   "clips": "/Users/david/AI/chimera-pie-data/full/subset-3h-ANTONIO.txt"
+  },
+  {
+   "tag": "W02",
+   "voice_id": "f1abxvIEijusskcPWE5x",
+   "speaker": "W02-PIE",
+   "clips": "/Users/david/AI/chimera-pie-data/full/subset-3h-W02.txt"
+  }
+ ]
+}
