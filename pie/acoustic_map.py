@@ -55,6 +55,22 @@ def centroid(x, sr, lo=2000, hi=11000):
     return float((X[m] * f[m]).sum() / (X[m].sum() + 1e-20))
 
 
+def raw_h1h2(snd, t0, t1, male):
+    """Uncorrected H1-H2 (dB): a boost at H1 drags a formant tracker's F1 onto it, so the Iseli-Alwan correction
+    cancels exactly the change a breathiness repair makes; compare the same voice's vowels after murmured and plain
+    stops instead."""
+    part = snd.extract_part(t0, t1)
+    f0 = part.to_pitch(time_step=0.005, pitch_floor=60 if male else 100, pitch_ceiling=300 if male else 450).selected_array["frequency"]
+    if not np.any(f0 > 0):
+        return float("nan")
+    f0 = float(np.median(f0[f0 > 0]))
+    sp = part.to_spectrum()
+    fr = np.array([sp.get_frequency_from_bin_number(i + 1) for i in range(sp.get_number_of_bins())])
+    mag = 20 * np.log10(np.abs(sp.values[0] + 1j * sp.values[1]) + 1e-12)
+    amp = lambda h: mag[(fr > h * f0 * 0.85) & (fr < h * f0 * 1.15)].max()
+    return float(amp(1) - amp(2))
+
+
 def phones(timing):
     d = json.load(open(timing))
     out = []
@@ -75,7 +91,7 @@ def measure_file(wav, ph, male):
     inten = snd.to_intensity(minimum_pitch=400, time_step=0.001)
     fm = snd.to_formant_burg(time_step=0.004, max_number_of_formants=5, maximum_formant=5000 if male else 5500)
     pitch = snd.to_pitch(time_step=0.002, pitch_floor=60 if male else 100, pitch_ceiling=300 if male else 450)
-    R = {k: [] for k in ("mur", "mod", "trill", "h_lvl", "h_share", "burst", "vot", "rnd_lab", "rnd_pl", "s_cent", "vlev", "vf2")}
+    R = {k: [] for k in ("mur_raw", "mod_raw", "mur", "mod", "trill", "h_lvl", "h_share", "burst", "vot", "rnd_lab", "rnd_pl", "s_cent", "vlev", "vf2")}
     vls = [rms_db(seg(p["t0"] + 0.25 * (p["t1"] - p["t0"]), p["t1"] - 0.25 * (p["t1"] - p["t0"]))) for p in ph if p["b"][:1] in VOW and len(p["b"]) == 1]
     vmed = float(np.nanmedian(vls)) if vls else float("nan")
     for i, p in enumerate(ph):
@@ -91,6 +107,7 @@ def measure_file(wav, ph, male):
                 h, c, v = MU.measure(snd, t0, t1)
                 if np.isfinite(h) and v > 0.5:
                     R["mur" if p["br"] else "mod"].append((h, c))
+                    R["mur_raw" if p["br"] else "mod_raw"].append(raw_h1h2(snd, t0, t1, male))
             except Exception:
                 pass
         if b == "r" and not p["syl"]:
@@ -176,6 +193,7 @@ def summarize(acc):
             "murmur_h1h2_minus_modal": float(np.nanmean(m[:, 0]) - np.nanmean(o[:, 0])) if len(m) and len(o) else None,
             "murmur_cpps_minus_modal": float(np.nanmean(m[:, 1]) - np.nanmean(o[:, 1])) if len(m) and len(o) else None,
             "n_murmur": len(m),
+            "murmur_raw_h1h2_minus_modal": float(np.nanmean(R["mur_raw"]) - np.nanmean(R["mod_raw"])) if R["mur_raw"] and R["mod_raw"] else None,
             "trill_2plus": float(np.mean(tr >= 2)) if len(tr) else None, "trill_0": float(np.mean(tr == 0)) if len(tr) else None,
             "trill_median": float(np.median(tr)) if len(tr) else None, "n_trill": len(tr),
             "h_level_db": float(np.nanmedian(R["h_lvl"])), "h_share": float(np.nanmedian(R["h_share"])),

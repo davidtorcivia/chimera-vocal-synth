@@ -51,3 +51,15 @@ female voice's murmur is too weak (+2 dB vs +7 male).
 3. Run the chain on all 6,620 clips; rebuild the QC gate for this corpus (floors from measured clean clips, a
    voicing meter that works on low male voices); export the Kokoro set (24 kHz, train/val lists, four speakers).
 4. The Chimera → natural converter (mel-to-mel + vocoder), trained on the restored clips paired with their sources.
+
+## Pilot, round 1 (2026-11-08; `pie/restore2.py`, `pie/restore_pilot.py`, `pie/pilot_score.py`; 12 clips per voice)
+- WORLD-vocoder repairs fail: an unedited WORLD round trip alone costs naturalness (UTMOS −0.04 to −0.09) and
+  accuracy (+0.3 to +2.3 points); kʷ stretch +1.5 to +4.4 points worse; murmur UTMOS −0.21 to −0.36 (female).
+  Uncorrected H1-H2 shows the murmur edit does raise breathiness (10.4 → 17.7 dB); the Iseli-Alwan H1*-H2* hides it
+  (an H1 boost drags F1 onto H1). Next round: STFT-domain gain edits only, nothing resynthesized.
+- Trill dips (no vocoder): accuracy −0.9 to 0 points (better), UTMOS −0.07 to −0.15: keep, make gentler.
+- EQ: female s correction works (W02 s misses 10 → 4 of 43, centroid 5.3 → 7.2 kHz); burst boost raises bursts
+  3-6 dB with no recognition gain; tonal EQ neutral for UTMOS and accuracy. Owner: EQ is for mastering, judged by
+  ear and naturalness; one repair at a time. Tonal EQ: boosts only (the reference voices are thinner than ours).
+Step 1 listening page (mastering EQ: conversion / half / full, loudness-matched):
+https://claude.ai/artifact/G339o7pt6nqvPC3By29QAv
