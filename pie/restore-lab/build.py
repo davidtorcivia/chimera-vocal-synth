@@ -81,6 +81,11 @@ table.t td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     <p class="hint">On top of steps 1-3. The old corpus's re-trill: in every r the timeline marks as a trill (word-initial or after a consonant; taps are left alone), each 40 ms cycle's contact is cut to −20 dB re the next vowel for 40 % of the cycle, with 5 ms cosine edges, unless the converter already kept it. The table gives the share of trills with two or more contacts.</p>
     <div id="step4" style="display:grid;gap:30px"></div>
   </section>
+  <section>
+    <h2>Step 6 · breathy release (female voices)</h2>
+    <p class="hint">On top of steps 1-4 (kʷ is left for the local converter: no post repair helped). After bʰ dʰ gʰ, the first third of the vowel gets aspiration noise shaped by the vowel's own spectrum and pulsed with each pitch period, plus a 3 dB lift at the first harmonic and a 3 dB high-shelf cut. Two noise levels. The table compares those vowels with the same voice's vowels after plain stops: higher H1-H2 and lower CPPS mean breathier. Clips with murmured stops come first.</p>
+    <div id="step6" style="display:grid;gap:30px"></div>
+  </section>
 </div>
 
 <script>
@@ -181,6 +186,22 @@ for (const v of D.step4) {
   host4.append(el);
   let sel = v.clips[0].id;
   const vers = id => V4.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
+  const head = c => `<div class="words">${c.words}</div>`;
+  const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
+  const list = el.querySelector('.list');
+  const render = () => { list.innerHTML = ''; for (const c of v.clips) { const b = document.createElement('button'); b.type = 'button'; b.className = 'row'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', c.id === sel);
+    b.innerHTML = `<span>${c.words}</span><span class="d">${c.dur.toFixed(1)} s</span>`; b.onclick = () => { sel = c.id; pl.load(vers(c.id), head(c)); render(); pl.play(); }; list.append(b); } };
+  render();
+}
+const host6 = document.getElementById('step6');
+const V6 = [['tr_old', 'Steps 1-4'], ['mn15', 'Noise −15 dB'], ['mn10', 'Noise −10 dB']];
+for (const v of D.step6) {
+  const el = document.createElement('div'); el.className = 'voice';
+  const rows = v.rows.map((r, i) => `<tr><td>${V6[i][1]}</td><td class="n">+${r.h} dB</td><td class="n">${r.c}</td><td class="n">${r.miss}%</td><td class="n">${r.mos.toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = `<div class="vhead"><h3>${v.name}</h3></div><div style="overflow-x:auto"><table class="t"><thead><tr><th>Version</th><th>H1-H2 vs plain</th><th>CPPS vs plain</th><th>Misses</th><th>Naturalness</th></tr></thead><tbody>${rows}</tbody></table></div><div class="player"></div><div class="list" role="listbox" aria-label="${v.name} clips"></div>`;
+  host6.append(el);
+  let sel = v.clips[0].id;
+  const vers = id => V6.map(([k, label]) => ({ label, src: `a/${v.tag}/${id}-${k}.mp3` }));
   const head = c => `<div class="words">${c.words}</div>`;
   const pl = Player(el.querySelector('.player'), vers(sel), head(v.clips[0]));
   const list = el.querySelector('.list');

@@ -460,3 +460,99 @@ def fix_kw_lpc(x, sr, ph, depth=0.15, dur=0.06, male=True):
             fn = lambda t, on=on: 1 - depth * float(np.clip(1 - (t - on) / dur, 0, 1)) if t >= on - 0.01 else 1.0
             x = lpc_formant_edit(x, sr, on - 0.01, on + dur, fn, order)
     return x
+
+
+def fix_kw_own_w(x, sr, ph, dur=0.03, strength=1.0, max_db=12.0, n=1024, hop=128):
+    """kʷ gʷ: over the first `dur` s of the following vowel (fading out), a spectral gain that turns the vowel's own
+    spectrum toward the same clip's w/u spectrum (this voice's own rounding), smoothed in third-octave bands.
+    STFT magnitude only; original phase."""
+    X, w = _stft(x, n, hop)
+    edges, f = _bands(sr, n)
+    bi = [np.where((f >= edges[i]) & (f < edges[i + 1]))[0] for i in range(len(edges) - 1)]
+    cen = np.sqrt(edges[:-1] * edges[1:])
+    tfr = (np.arange(X.shape[0]) * hop - n) / sr + n / 2 / sr
+    def bandspec(rows):
+        P = np.abs(X[rows]) ** 2
+        return np.array([P[:, ix].mean() if len(ix) else 1e-12 for ix in bi]) + 1e-12
+    # the voice's own rounded reference: middles of w and u in this clip
+    rw = [r for p in ph if p["b"] in ("w", "u") for r in np.where((tfr >= p["t0"] + 0.3 * (p["t1"] - p["t0"])) & (tfr <= p["t1"] - 0.3 * (p["t1"] - p["t0"])))[0]]
+    if len(rw) < 3:
+        return x
+    Ew = bandspec(np.array(rw))
+    G = np.zeros(X.shape)
+    for i, p in enumerate(ph):
+        nx = ph[i + 1] if i + 1 < len(ph) else None
+        if p["b"] in ("k", "g") and p["lab"] and nx is not None and is_vowel(nx) and abs(nx["t0"] - p["t1"]) < 0.02:
+            on, off = nx["t0"], nx["t1"]
+            mid = np.where((tfr >= on + 0.3 * (off - on)) & (tfr <= off - 0.2 * (off - on)))[0]
+            if len(mid) < 2:
+                continue
+            Ev = bandspec(mid)
+            # shape only (level-neutral): normalise both to their 300-3000 Hz mean
+            m = (cen > 300) & (cen < 3000)
+            shape = 10 * np.log10(Ew / Ew[m].mean()) - 10 * np.log10(Ev / Ev[m].mean())
+            shape = np.clip(shape, -max_db, max_db)
+            gbin = np.interp(np.log(np.maximum(f, 1)), np.log(cen), shape)
+            for r in np.where((tfr >= on - 0.005) & (tfr <= on + dur))[0]:
+                a = strength * float(np.clip(1 - (tfr[r] - on) / dur, 0, 1))
+                G[r] = np.maximum(G[r], 0) if False else a * gbin
+    k = np.hanning(5); k /= k.sum()
+    G = np.apply_along_axis(lambda c: np.convolve(c, k, mode="same"), 0, G)
+    return _istft(X * 10 ** (G / 20), len(x), n, hop, w)
+
+
+def fix_murmur_noise(x, sr, ph, noise_db=-15.0, h1_db=3.0, tilt_db=3.0, seed=0, n=1024, hop=128):
+    """Breathy release after bʰ dʰ gʰ ɟʰ gʷʰ, no vocoder: over the vowel's first third (fading out), (1) aspiration
+    noise high-passed at 1.5 kHz, shaped by the vowel's own LPC envelope and gated pitch-synchronously (peak in the
+    open phase, Hermes 1991), mixed `noise_db` re the vowel's own >2 kHz level; (2) a small H1 lift and high-shelf cut
+    as an STFT gain (Klatt & Klatt 1990: noise is the main cue; an H1 boost alone reads as nasal in a high voice)."""
+    from scipy.signal import lfilter
+    rng = np.random.default_rng(seed)
+    y = x.copy()
+    spans = []
+    for i, p in enumerate(ph):
+        nx = ph[i + 1] if i + 1 < len(ph) else None
+        if p["br"] and p["b"] in ("b", "d", "g", "ɟ") and nx is not None and is_vowel(nx) and abs(nx["t0"] - p["t1"]) < 0.02:
+            spans.append((nx["t0"], nx["t0"] + max(0.05, (nx["t1"] - nx["t0"]) / 3)))
+    if not spans:
+        return x
+    snd = parselmouth.Sound(x, sampling_frequency=sr)
+    pp = parselmouth.praat.call(snd, "To PointProcess (periodic, cc)", 75, 500)
+    npts = parselmouth.praat.call(pp, "Get number of points")
+    pulses = np.array([parselmouth.praat.call(pp, "Get time from index", k + 1) for k in range(npts)])
+    f0_at = lambda t: (1.0 / np.median(np.diff(pulses[(pulses > t - 0.03) & (pulses < t + 0.03)]))) if np.sum((pulses > t - 0.03) & (pulses < t + 0.03)) > 2 else 200.0
+    hp = butter(4, 1500, btype="high", fs=sr, output="sos")
+    for a, b in spans:
+        ia, ib = int(a * sr), min(len(x), int(b * sr))
+        if ib - ia < int(0.03 * sr):
+            continue
+        seg = x[ia:ib]
+        aa = _lpc(seg * np.hanning(len(seg)), 30)
+        nz = lfilter([1.0], aa, sosfiltfilt(hp, rng.standard_normal(len(seg))))
+        # pitch-synchronous gate: raised cosine per period, peaking 60 % into the period
+        t = (ia + np.arange(len(seg))) / sr
+        gate = np.full(len(seg), 0.5)
+        pk = pulses[(pulses >= a - 0.02) & (pulses <= b + 0.02)]
+        for p0, p1 in zip(pk[:-1], pk[1:]):
+            m = (t >= p0) & (t < p1)
+            ph_ = (t[m] - p0) / (p1 - p0)
+            gate[m] = 0.5 + 0.5 * np.cos(2 * np.pi * (ph_ - 0.6))
+        nz *= gate
+        ref = np.sqrt(np.mean(sosfiltfilt(butter(4, 2000, btype="high", fs=sr, output="sos"), seg) ** 2)) + 1e-9
+        nz *= ref * 10 ** (noise_db / 20) / (np.sqrt(np.mean(nz ** 2)) + 1e-12)
+        fade = np.clip(1 - (t - a) / (b - a), 0, 1)
+        fade *= np.clip((t - a) / 0.005, 0, 1)
+        y[ia:ib] += nz * fade
+    # H1 lift and tilt as an STFT gain over the same spans
+    X, w = _stft(y, n, hop)
+    f = np.fft.rfftfreq(n, 1 / sr)
+    tfr = (np.arange(X.shape[0]) * hop - n) / sr + n / 2 / sr
+    G = np.zeros(X.shape)
+    for a, b in spans:
+        f0 = f0_at(0.5 * (a + b))
+        g = h1_db * np.exp(-0.5 * ((f - f0) / (0.5 * f0)) ** 2) - tilt_db * np.clip((f - 2000) / 1000, 0, 1)
+        for r in np.where((tfr >= a) & (tfr <= b))[0]:
+            G[r] = g * float(np.clip(1 - (tfr[r] - a) / (b - a), 0, 1))
+    k = np.hanning(5); k /= k.sum()
+    G = np.apply_along_axis(lambda c: np.convolve(c, k, mode="same"), 0, G)
+    return _istft(X * 10 ** (G / 20), len(y), n, hop, w)

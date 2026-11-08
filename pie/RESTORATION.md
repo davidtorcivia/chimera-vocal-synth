@@ -100,3 +100,13 @@ for kʷ to fail. Pre-distortion instead: re-render the 35 pilot clips with lab_g
 e after kʷ starts to round: Zazy e 6 → 23). UTMOS with 30 ms: Zazy 3.06 → 3.05, Antonio 2.93 → 2.99, Valeria 2.96 → 2.95,
 W02 2.81 → 2.94. Valeria's overall misses worse on that draw (converter variance). Corpus-wide this needs re-rendering
 and reconverting every clip with kʷ/gʷ (~350-400k credits); proposal: bundle all source-side fixes into one reconversion.
+
+Owner (2026-11-08): no more reconversions, no more spending — post-processing only from here. Source pre-distortion
+(the 30 ms kʷ glide) waits for the local converter (Phase 4), where reconversion is free.
+kʷ, fourth post attempt (`fix_kw_own_w`: the clip's own w/u spectral shape laid over the first 30-45 ms of the vowel
+after kʷ, STFT gain): kʷ misses 36 → 38/91, UTMOS unchanged. kʷ left for the local converter.
+Step 6 (female murmur, `fix_murmur_noise`, on steps 1-4): LPC-shaped, pitch-synchronously gated aspiration noise
+(> 1.5 kHz) over the vowel's first third, + 3 dB at H1, −3 dB high shelf. Valeria (uncorrected H1-H2, murmured vs
+plain): +5.2 → +6.3 / +6.4 dB, CPPS difference −1.8 → −1.8 / −2.2 (noise −15 / −10 dB), UTMOS −0.02; W02 already
++11.7 → +12.8. Valeria's murmur was weaker, not lost: the Phase-0 "lost" came from the Iseli-Alwan artefact.
+On the lab page for the owner.
