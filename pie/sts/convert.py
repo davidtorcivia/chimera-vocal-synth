@@ -1,4 +1,5 @@
-"""Convert Chimera renders with a trained mapper (pie/sts/train.py OUT/best.pt) and BigVGAN-v2.
+"""Convert Chimera renders with a trained mapper (pie/sts/train.py OUT/best.pt, over the released BigVGAN-v2) or an
+end-to-end checkpoint (pie/sts/train_e2e.py OUT/g_<step>.pt, mapper and fine-tuned generator).
     python pie/sts/convert.py CKPT OUT [--src DIR] [--split val]
 Without --src: the val pairs' source mels. With --src DIR (renders named <clip>__<JD3-PIE|W02-PIE>.wav): those
 renders, mels computed here. Each val clip is converted into the voice(s) whose val list holds it.
@@ -13,9 +14,13 @@ from model import Mapper
 ap = argparse.ArgumentParser(); ap.add_argument("ckpt"); ap.add_argument("out"); ap.add_argument("--src"); ap.add_argument("--split", default="val")
 a = ap.parse_args()
 torch.cuda.set_per_process_memory_fraction(0.5, 0)
-sd = torch.load(a.ckpt, map_location="cuda", weights_only=False)
-m = Mapper(**sd["cfg"]).cuda().eval(); m.load_state_dict(sd["model"])
-voc = C.vocoder()
+sd = torch.load(a.ckpt, map_location="cuda", weights_only=False)        # our own checkpoints
+if "gen" in sd:                                    # an end-to-end checkpoint (pie/sts/train_e2e.py): mapper + generator
+    m = Mapper(**sd["mapper_cfg"]).cuda().eval(); m.load_state_dict(sd["mapper"])
+    voc = C.vocoder(weight_norm=True); voc.load_state_dict(sd["gen"]); voc.remove_weight_norm(); voc.eval()
+else:                                              # an L1 mapper (pie/sts/train.py) over the released vocoder
+    m = Mapper(**sd["cfg"]).cuda().eval(); m.load_state_dict(sd["model"])
+    voc = C.vocoder()
 SPK = {t: i for i, t in enumerate(C.TAGS)}
 n = 0
 for tag, stem in C.pairs(a.split):
