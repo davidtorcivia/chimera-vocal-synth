@@ -1,4 +1,5 @@
-"""Convert Chimera renders with a trained mapper (pie/sts/train.py OUT/best.pt, over the released BigVGAN-v2) or an
+"""Convert Chimera renders with a v2 flow model (pie/sts/train_flow.py OUT/ema_<step>.pt; --ode_steps, --cfg, --temp), a
+trained mapper (pie/sts/train.py OUT/best.pt, over the released BigVGAN-v2) or an
 end-to-end checkpoint (pie/sts/train_e2e.py OUT/g_<step>.pt, mapper and fine-tuned generator).
     python pie/sts/convert.py CKPT OUT [--src DIR] [--split val]
 Without --src: the val pairs' source mels. With --src DIR (renders named <clip>__<JD3-PIE|W02-PIE>.wav): those
@@ -12,10 +13,16 @@ import common as C
 from model import Mapper
 
 ap = argparse.ArgumentParser(); ap.add_argument("ckpt"); ap.add_argument("out"); ap.add_argument("--src"); ap.add_argument("--split", default="val")
+ap.add_argument("--ode_steps", type=int, default=32); ap.add_argument("--cfg", type=float, default=0.0); ap.add_argument("--temp", type=float, default=1.0)
 a = ap.parse_args()
 torch.cuda.set_per_process_memory_fraction(0.5, 0)
 sd = torch.load(a.ckpt, map_location="cuda", weights_only=False)        # our own checkpoints
-if "gen" in sd:                                    # an end-to-end checkpoint (pie/sts/train_e2e.py): mapper + generator
+flow = sd.get("kind") == "flow"
+if flow:                                           # v2 (pie/sts/train_flow.py): the flow model's EMA weights over the released vocoder
+    from flow import FlowNet, sample
+    m = FlowNet(**sd["cfg"]).cuda().eval(); m.load_state_dict(sd["ema"])
+    voc = C.vocoder()
+elif "gen" in sd:                                  # an end-to-end checkpoint (pie/sts/train_e2e.py): mapper + generator
     m = Mapper(**sd["mapper_cfg"]).cuda().eval(); m.load_state_dict(sd["mapper"])
     voc = C.vocoder(weight_norm=True); voc.load_state_dict(sd["gen"]); voc.remove_weight_norm(); voc.eval()
 else:                                              # an L1 mapper (pie/sts/train.py) over the released vocoder
@@ -36,7 +43,13 @@ for tag, stem in C.pairs(a.split):
             continue
         src = torch.from_numpy(np.load(f)["src"].astype(np.float32)).cuda()
     with torch.no_grad():
-        mel = m(src[None], torch.tensor([SPK[tag]], device="cuda"))
+        k = torch.tensor([SPK[tag]], device="cuda")
+        if flow:
+            g = torch.Generator(device="cuda"); g.manual_seed(1234)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                mel = sample(m, src[None], k, steps=a.ode_steps, cfg=a.cfg, temp=a.temp, generator=g).float()
+        else:
+            mel = m(src[None], k)
         w = voc(mel)[0, 0].float().cpu().numpy()
     d = Path(a.out) / tag; d.mkdir(parents=True, exist_ok=True)
     sf.write(d / f"{stem}.wav", np.clip(w, -1, 1), C.SR, subtype="PCM_16"); n += 1
