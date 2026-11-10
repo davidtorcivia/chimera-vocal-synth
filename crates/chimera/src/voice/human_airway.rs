@@ -41,6 +41,18 @@ pub struct NoiseGains {
     /// band edge (Hz) of the dorsal source, and whether its low-pass is four-pole (else two)
     pub dorsal_lowpass: f64,
     pub dorsal_steep: bool,
+    /// stop-release burst (PIE): for `burst_time` s after a full closure opens, the constriction source
+    /// takes this upper band edge (Hz) instead of its 2.6 kHz and `burst_gain` × its gain; a real release
+    /// burst carries much of its energy above 3–4 kHz, and with the 2.6 kHz edge a release was a low pop.
+    /// 0 = off (every voice but PIE's: their renders stay bit-identical)
+    pub burst_lowpass: f64,
+    pub burst_gain: f64,
+    pub burst_time: f64,
+    /// the burst's gain by place of the release (blended by its distance behind the teeth): at the lips
+    /// (`burst_gain_lab`), the tongue tip (`burst_gain_front`), and the tongue body (`burst_gain`); a
+    /// release's noise at the lips radiates weakly, a tip release's strongly
+    pub burst_gain_lab: f64,
+    pub burst_gain_front: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -89,6 +101,8 @@ pub struct HumanAirway {
     /// areas committed at the start of the current control step (slew-limit baseline)
     base: Option<[Vec<f64>; 4]>,
     base_dt: f64,
+    /// seconds since the oral/pharyngeal channel was last fully closed (stop-release bursts)
+    since_closed: f64,
     noise_list: Vec<NoiseSpec>,
     scratch_frame: HumanFrame,
 }
@@ -169,7 +183,7 @@ impl HumanAirway {
             ph_len: 8.8,
             or_len: 8.3,
             asp_lowpass_now: f64::NAN,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_offset2: 0.0, dorsal_split: 0.5, dorsal_area: 0.6, glottis_lowpass: 3500.0, constr_area: 0.9, dorsal_lowpass: 900.0, dorsal_steep: false },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_offset2: 0.0, dorsal_split: 0.5, dorsal_area: 0.6, glottis_lowpass: 3500.0, constr_area: 0.9, dorsal_lowpass: 900.0, dorsal_steep: false, burst_lowpass: 0.0, burst_gain: 1.0, burst_time: 0.02, burst_gain_lab: 1.0, burst_gain_front: 1.0 },
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
@@ -178,6 +192,7 @@ impl HumanAirway {
             seal_ease: 0.03,
             base: None,
             base_dt: 0.0,
+            since_closed: 1.0,
             noise_list: Vec::with_capacity(8),
             scratch_frame: HumanFrame::with_capacity(),
         }
@@ -199,6 +214,9 @@ impl HumanAirway {
             base[3].copy_from_slice(&self.or_min);
         }
         self.base_dt = dt;
+        if dt > 0.0 {
+            self.since_closed += dt;
+        }
         self.commit(a, dt)
     }
 
@@ -303,8 +321,12 @@ impl HumanAirway {
         let (n_ph, n_or) = (self.n_ph, self.n_or);
         let mut min_a = f64::INFINITY;
         let mut min_i: isize = -1;
+        let closed_eps = 1e-3 * self.body.scale * self.body.scale;
         for i in 0..n_ph + n_or {
             let area = if i < n_ph { self.ph_min[i] } else { self.or_min[i - n_ph] };
+            if area <= closed_eps {
+                self.since_closed = 0.0;
+            }
             if area > 0.0 && area < min_a {
                 min_a = area;
                 min_i = i as isize;
@@ -339,7 +361,21 @@ impl HumanAirway {
             let fwd = to_branch((n_tot - 2).min(min_i + off));
             let bwd = to_branch(0.max(min_i - off));
             if src >= 0 && fwd >= 0 && bwd >= 0 {
-                list.push(NoiseSpec::new(src as usize, fwd as usize, bwd as usize, g.constriction * w_area).band(2600.0, 350.0));
+                // a stop's release (just after a full closure): the burst band, fading back to the frication band
+                let burst = if g.burst_lowpass > 0.0 && self.since_closed < g.burst_time { 1.0 - self.since_closed / g.burst_time } else { 0.0 };
+                if burst > 0.0 {
+                    let s_rel = if min_i < n_ph_i { (min_i as f64 + 0.5) * dx_ph } else { self.ph_len + ((min_i - n_ph_i) as f64 + 0.5) * dx_or };
+                    let behind_rel = (f.teeth_s - s_rel) / self.body.scale;
+                    // where releases fall on this scale (measured on [apa ata acá aka]): the lips ≈ −0.2…0.2, the tip
+                    // ≈ 2.6–3.2, the palatal ≈ 4.3–5.3, the velar ≈ 5.5–7
+                    let w_lab = 1.0 - smooth(0.2, 0.8, behind_rel);
+                    let w_back = smooth(3.6, 4.4, behind_rel);
+                    let w_front = js_max(0.0, 1.0 - w_lab - w_back);
+                    let gain = w_lab * g.burst_gain_lab + w_front * g.burst_gain_front + w_back * g.burst_gain;
+                    list.push(NoiseSpec::new(src as usize, fwd as usize, bwd as usize, g.constriction * w_area * (1.0 + (gain - 1.0) * burst)).band(2600.0 + (g.burst_lowpass - 2600.0) * burst, 350.0));
+                } else {
+                    list.push(NoiseSpec::new(src as usize, fwd as usize, bwd as usize, g.constriction * w_area).band(2600.0, 350.0));
+                }
                 // obstacle source: a narrow anterior jet impinging on the incisors (sibilants)
                 let s_min = if min_i < n_ph_i { (min_i as f64 + 0.5) * dx_ph } else { self.ph_len + ((min_i - n_ph_i) as f64 + 0.5) * dx_or };
                 let behind = (f.teeth_s - s_min) / self.body.scale;

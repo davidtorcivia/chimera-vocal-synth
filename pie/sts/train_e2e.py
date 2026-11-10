@@ -47,6 +47,9 @@ ap.add_argument("--no_ckpt", action="store_true", help="no activation checkpoint
 ap.add_argument("--mask", default="", help="v2: JSON of masked sample intervals per TAG/stem (pie/sts/mask.py)")
 ap.add_argument("--ramp", type=float, default=0.005, help="the mask's edge, seconds")
 ap.add_argument("--init_d", default="", help="discriminators from this last.pt (when not resuming)")
+ap.add_argument("--bursts", default="", help="JSON of stop-release intervals per TAG/stem (pie/sts/bursts.py): an extra mel loss on those alone")
+ap.add_argument("--lambda_burst", type=float, default=45.0, help="weight of the burst mel loss (the main mel loss has BigVGAN's 45)")
+ap.add_argument("--p_end", type=float, default=0.0, help="share of crops ending at the clip's last frame (line endings are otherwise rare in random crops)")
 ap.add_argument("--freeze_gen", action="store_true", help="v3: BigVGAN stays as loaded (the release); only the mapper and the discriminators learn")
 ap.add_argument("--bench", type=int, default=0, help="run this many steps, print a timing breakdown, exit (nothing saved)")
 a = ap.parse_args()
@@ -59,6 +62,7 @@ SPK = {t: i for i, t in enumerate(C.TAGS)}
 
 # data: source mels and the target waveforms (int16 in RAM), frame-aligned; v2: each pair's masked intervals
 MASKS = json.load(open(a.mask)) if a.mask else None
+BURSTS = json.load(open(a.bursts)) if a.bursts else None
 items = []
 for f in sorted(glob.glob(str(C.DATA / "train" / "*.npz"))):
     tag, stem = Path(f).stem.split("__", 1)
@@ -67,7 +71,8 @@ for f in sorted(glob.glob(str(C.DATA / "train" / "*.npz"))):
     n = src.shape[1] * C.HOP
     w = np.pad(w, (0, max(0, n - len(w))))[:n]
     iv = np.array(MASKS.get(f"{tag}/{stem}", []), dtype=np.int64).reshape(-1, 2) if MASKS is not None else None
-    items.append((src, w, SPK[tag], iv))
+    ib = np.array(BURSTS.get(f"{tag}/{stem}", []), dtype=np.int64).reshape(-1, 2) if BURSTS is not None else None
+    items.append((src, w, SPK[tag], iv, ib))
 print(len(items), "training pairs in memory", flush=True)
 RAMP = max(1, int(a.ramp * C.SR))
 
@@ -84,11 +89,11 @@ def weight(iv, o, n):
 
 
 def batch():
-    xs, ys, ss, ws = [], [], [], []
+    xs, ys, ss, ws, bs = [], [], [], [], []
     for _ in range(a.batch):
-        src, w, k, iv = random.choice(items)
+        src, w, k, iv, ib = random.choice(items)
         T = src.shape[1]
-        o = random.randint(0, max(0, T - a.seg))
+        o = max(0, T - a.seg) if random.random() < a.p_end else random.randint(0, max(0, T - a.seg))
         m = src[:, o:o + a.seg].astype(np.float32); y = w[o * C.HOP:(o + a.seg) * C.HOP].astype(np.float32) / 32768
         if m.shape[1] < a.seg:                                  # short clips: pad with silence
             m = np.pad(m, ((0, 0), (0, a.seg - m.shape[1])), constant_values=-11.5)
@@ -96,7 +101,10 @@ def batch():
         xs.append(m); ys.append(y); ss.append(k)
         if iv is not None:
             ws.append(weight(iv, o * C.HOP, a.seg * C.HOP))
+        if ib is not None:
+            bs.append(1 - weight(ib, o * C.HOP, a.seg * C.HOP))              # 1 in the release windows, 0 elsewhere
     wt = torch.from_numpy(np.stack(ws))[:, None].to(dev) if ws else None
+    batch.wb = torch.from_numpy(np.stack(bs))[:, None].to(dev) if bs else None
     return (torch.from_numpy(np.stack(xs)).to(dev), torch.from_numpy(np.stack(ys))[:, None].to(dev), torch.tensor(ss, device=dev), wt)
 
 
@@ -176,6 +184,8 @@ while step < a.steps:
     og.zero_grad()
     yc, yhc = (y, y_hat) if wt is None else (y * wt, y_hat * wt)      # v2: the copy losses only outside the mask
     lm = mel_loss(yc, yhc) * h.lambda_melloss
+    if batch.wb is not None:                                          # the stop releases on their own (pie/sts/bursts.py)
+        lm = lm + mel_loss(y * batch.wb, y_hat * batch.wb) * a.lambda_burst
     mark("3 mel loss")
     if step >= a.d_warmup or a.bench:
         with AMP_D:

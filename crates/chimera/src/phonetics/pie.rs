@@ -235,6 +235,14 @@ pub struct PieOptions {
     /// the narrowing (cm²) above which the general constriction source has faded out (the engine's 0.9 lets
     /// laterals and close vowels hiss)
     pub constr_area: f64,
+    /// stop-release burst: upper band edge (Hz; 0 = off), gain multiplier and duration (s) of the constriction
+    /// source just after a full closure opens (see NoiseGains::burst_lowpass)
+    pub burst_lowpass: f64,
+    pub burst_gain: f64,
+    pub burst_time: f64,
+    /// the burst gain at the lips and at the tongue tip (`burst_gain` is the tongue body's)
+    pub burst_gain_lab: f64,
+    pub burst_gain_front: f64,
     /// multiplier on the glottal aspiration noise gain
     pub glottis_noise: f64,
     /// aspiration colour (band edge, Hz) during h₁ [h] and h₂ [χ], set by gestures (the aspLowpass
@@ -339,6 +347,15 @@ impl Default for PieOptions {
             glottis_lowpass: 3500.0,
             glottis_noise: 1.0,
             constr_area: 0.45,
+            // stop-release bursts (2026-11-10): Chimera's releases were low pops (centroid p 283 Hz, t 1.4 kHz,
+            // k 0.7 kHz; the owner heard a low click through the converter). These put them at the paid
+            // conversion's brightness on the held-out lines (p 1160 / 1155 Hz, t 3142 / 2968, k 3653 / 3632,
+            // kʷ 2120 / 2219, c 2432 / 3137) with the recognizer's misses unchanged (±0.2 points)
+            burst_lowpass: 8000.0,
+            burst_gain: 6.0,
+            burst_time: 0.02,
+            burst_gain_lab: 10.0,
+            burst_gain_front: 2.0,
             h_asp_lowpass: 1200.0,
             chi_asp_lowpass: 0.0,
             s_tip_fwd: 0.0,
@@ -1092,6 +1109,11 @@ pub fn setup_voice(v: &mut crate::voice::human_voice::HumanVoice, f0: f64, p: &P
     v.airway.noise_gain.glottis_lowpass = p.glottis_lowpass;
     v.airway.noise_gain.glottis *= p.glottis_noise;
     v.airway.noise_gain.constr_area = p.constr_area;
+    v.airway.noise_gain.burst_lowpass = p.burst_lowpass;
+    v.airway.noise_gain.burst_gain = p.burst_gain;
+    v.airway.noise_gain.burst_time = p.burst_time;
+    v.airway.noise_gain.burst_gain_lab = p.burst_gain_lab;
+    v.airway.noise_gain.burst_gain_front = p.burst_gain_front;
     v.murmur_chink = p.mur_chink;
     v.murmur_oq = p.mur_oq;
 }
