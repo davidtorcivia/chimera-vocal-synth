@@ -9,6 +9,9 @@ Resumable: OUT/last.pt every --last_every steps (500, ~8 min), and a start with 
 creating OUT/STOP: it saves last.pt at the next step and exits 0. OUT/metrics.jsonl; OUT/g_<step>.pt every --save_every
 steps (mapper + generator, for conversion).
 
+v3 (--freeze_gen): the released BigVGAN-v2 is loaded and never trained; the mapper alone learns, through it, against the
+same mel, adversarial and feature-matching losses, so its mels become ones the released vocoder renders well.
+
 v2 (--mask, pie/sts/mask.py): inside the masked stretches (the sounds the paid target gets wrong more often than the
 Chimera render) the copy losses are dropped: the mel loss and the feature matching are computed on both waveforms
 multiplied by a weight that is 0 there (5 ms raised edges), while the adversarial loss still sees the whole output. So
@@ -44,6 +47,7 @@ ap.add_argument("--no_ckpt", action="store_true", help="no activation checkpoint
 ap.add_argument("--mask", default="", help="v2: JSON of masked sample intervals per TAG/stem (pie/sts/mask.py)")
 ap.add_argument("--ramp", type=float, default=0.005, help="the mask's edge, seconds")
 ap.add_argument("--init_d", default="", help="discriminators from this last.pt (when not resuming)")
+ap.add_argument("--freeze_gen", action="store_true", help="v3: BigVGAN stays as loaded (the release); only the mapper and the discriminators learn")
 ap.add_argument("--bench", type=int, default=0, help="run this many steps, print a timing breakdown, exit (nothing saved)")
 a = ap.parse_args()
 torch.cuda.set_per_process_memory_fraction(a.mem, 0)
@@ -127,7 +131,9 @@ EV = {}
 def mark(k):
     if a.bench:
         e = torch.cuda.Event(enable_timing=True); e.record(); EV.setdefault(k, []).append(e)
-og = torch.optim.AdamW([{"params": gen.parameters(), "lr": a.lr}, {"params": mapper.parameters(), "lr": a.lr_map}], betas=(h.adam_b1, h.adam_b2))
+if a.freeze_gen:                  # v3 (owner's listening test, 2026-11-09): fine-tuning made the released vocoder bumpy even on real mels
+    gen.requires_grad_(False)
+og = torch.optim.AdamW(([] if a.freeze_gen else [{"params": gen.parameters(), "lr": a.lr}]) + [{"params": mapper.parameters(), "lr": a.lr_map}], betas=(h.adam_b1, h.adam_b2))
 od = torch.optim.AdamW(itertools.chain(mpd.parameters(), mrd.parameters()), a.lr, betas=(h.adam_b1, h.adam_b2))
 step = 0
 if (OUT / "last.pt").exists():
@@ -182,7 +188,7 @@ while step < a.steps:
         lg = lfm = torch.zeros(())
         lall = lm
     mark("4 disc on fake")
-    lall.backward(); torch.nn.utils.clip_grad_norm_(itertools.chain(gen.parameters(), mapper.parameters()), clip); og.step()
+    lall.backward(); torch.nn.utils.clip_grad_norm_(mapper.parameters() if a.freeze_gen else itertools.chain(gen.parameters(), mapper.parameters()), clip); og.step()
     mark("5 gen backward")
     step += 1
     if a.bench and step == a.bench:

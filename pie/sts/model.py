@@ -22,14 +22,34 @@ class Block(nn.Module):
         return x + self.drop(self.ff(self.n2(x)))
 
 
+class Attn(nn.Module):                            # v4: self-attention over the whole line (rotary positions), pre-norm
+    def __init__(self, d, heads=8, drop=0.1):
+        super().__init__()
+        self.h = heads; self.n = nn.LayerNorm(d); self.qkv = nn.Linear(d, 3 * d); self.o = nn.Linear(d, d); self.drop = nn.Dropout(drop)
+
+    def forward(self, x):
+        from flow import rope
+        B, T, d = x.shape
+        q, k, v = self.qkv(self.n(x)).view(B, T, 3, self.h, d // self.h).permute(2, 0, 3, 1, 4)
+        h = nn.functional.scaled_dot_product_attention(rope(q), rope(k), v).transpose(1, 2).reshape(B, T, d)
+        return x + self.drop(self.o(h))
+
+
 class Mapper(nn.Module):
-    def __init__(self, n_mel=128, d=384, layers=8, kernel=7, n_spk=4, drop=0.1):
+    def __init__(self, n_mel=128, d=384, layers=8, kernel=7, n_spk=4, drop=0.1, attn_every=0):
         super().__init__()
         self.inp = nn.Linear(n_mel, d); self.spk = nn.Embedding(n_spk, d)
-        self.blocks = nn.ModuleList([Block(d, kernel, drop) for _ in range(layers)])
+        blocks = []
+        for i in range(layers):                    # attn_every k: a self-attention layer after every k-th conv block (v4)
+            blocks.append(Block(d, kernel, drop))
+            if attn_every and (i + 1) % attn_every == 0:
+                blocks.append(Attn(d, drop=drop))
+        self.blocks = nn.ModuleList(blocks)
         self.out = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, n_mel))
         nn.init.zeros_(self.out[1].weight); nn.init.zeros_(self.out[1].bias)
         self.cfg = dict(n_mel=n_mel, d=d, layers=layers, kernel=kernel, n_spk=n_spk, drop=drop)
+        if attn_every:
+            self.cfg["attn_every"] = attn_every
 
     def forward(self, mel, spk):                  # mel: B, 128, T (log); spk: B
         x = ((mel - MEAN) / STD).transpose(1, 2)
