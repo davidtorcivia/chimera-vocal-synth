@@ -126,6 +126,11 @@ export interface Beam3Opts {
 export class Beams {
   readonly group = new THREE.Group();
   private readonly batches: Batch[];
+  /** every line added from now on is this bright (1: as given): a renderer dims a part of what it draws */
+  gain = 1;
+  /** lines fade out going down to height `y` and vanish below it, over `band` (body cm): a head
+   *  whose neck gives way to a body drawn under it */
+  fade: { y: number; band: number } | null = null;
 
   constructor() {
     this.batches = WIDTHS.map((w) => {
@@ -173,7 +178,18 @@ export class Beams {
   /** one segment */
   seg(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string, width: number, alpha = 1): void {
     const [r, g, b] = rgb(color);
-    this.batch(width).seg(x0, y0, z0, x1, y1, z1, r * alpha, g * alpha, b * alpha);
+    this.put(this.batch(width), x0, y0, z0, x1, y1, z1, r * alpha, g * alpha, b * alpha);
+  }
+
+  /** a segment, at the gain and through the fade */
+  private put(bt: Batch, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r: number, g: number, b: number): void {
+    let m = this.gain;
+    if (this.fade) {
+      const t = Math.min(1, Math.max(0, ((y0 + y1) / 2 - this.fade.y) / this.fade.band));
+      if (t <= 0) return;
+      m *= t * t * (3 - 2 * t);
+    }
+    bt.seg(x0, y0, z0, x1, y1, z1, r * m, g * m, b * m);
   }
 
   private strokes(a: ArrayLike<number>, n: number, [r, g, b]: [number, number, number], al: number, bt: Batch, close: boolean): void {
@@ -182,11 +198,11 @@ export class Beams {
     b *= al;
     for (let i = 0; i < n - 1; i++) {
       const j = 3 * i;
-      bt.seg(a[j], a[j + 1], a[j + 2], a[j + 3], a[j + 4], a[j + 5], r, g, b);
+      this.put(bt, a[j], a[j + 1], a[j + 2], a[j + 3], a[j + 4], a[j + 5], r, g, b);
     }
     if (close) {
       const j = 3 * (n - 1);
-      bt.seg(a[j], a[j + 1], a[j + 2], a[0], a[1], a[2], r, g, b);
+      this.put(bt, a[j], a[j + 1], a[j + 2], a[0], a[1], a[2], r, g, b);
     }
   }
 

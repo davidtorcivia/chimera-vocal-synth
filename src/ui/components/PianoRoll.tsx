@@ -3,8 +3,8 @@ import { usePhosphor } from "../usePhosphor.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { useStore } from "../store.ts";
 import { roll, tickSinging } from "../singing.ts";
-import { V } from "../colors.ts";
-import { beam, beamPts, label, seg, type Pt } from "../render/vector.ts";
+import { TEXT, V } from "../colors.ts";
+import { beam, beamPts, label, LABEL_MIN, labelWidth, type Pt, seg } from "../render/vector.ts";
 import { nearestBody } from "../body.ts";
 
 /** pixels per second of voice time */
@@ -32,7 +32,8 @@ export function PianoRoll() {
     const body = useStore.getState().body;
     const tele = engine.latest?.t;
     const clock = engine.voiceClock() ?? 0;
-    // sung pitch, sampled as telemetry arrives
+    // sung pitch, sampled as telemetry arrives; a new voice's clock starts again, on a new timeline
+    if (tele && tele.clock < s.lastClock) s.trace.length = 0;
     if (tele && tele.clock !== s.lastClock) {
       s.lastClock = tele.clock;
       s.trace.push({ t: tele.clock, m: tele.f0 > 20 ? hzToMidi(tele.f0) : NaN, v: tele.voicing });
@@ -69,7 +70,8 @@ export function PianoRoll() {
       }
       if (pc === 0) {
         seg(ctx, left, yc + rowH / 2, w, yc + rowH / 2, V.frame, 1);
-        label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: 9, color: V.blueMid, ls: 0.1 });
+        // a C row at the very foot of the roll would be cut by its edge: its name waits until it's in
+        if (yc + 5 <= h) label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: LABEL_MIN, color: TEXT.secondary, ls: 0.1 });
       }
     }
     beam(ctx, dotted, V.frame, 1, { dash: [1, 5] });
@@ -93,7 +95,13 @@ export function PianoRoll() {
         ctx.restore();
       }
       beam(ctx, r, V.green, live ? 1.6 : 1.2, { alpha: live ? 1 : future ? 0.38 : 0.62, hot: live });
-      if (n.text && n.text !== "~") label(ctx, n.text.toUpperCase(), x0 + 1, yc - barH / 2 - 4, { size: 10, color: live ? V.white : V.blueMid, ls: 0.12, alpha: future ? 0.6 : 1 });
+      if (n.text && n.text !== "~") {
+        const text = n.text.toUpperCase();
+        // coming syllables are dimmed by colour, not alpha (a faded single stroke is hard to read)
+        const o = { size: LABEL_MIN, color: live ? V.white : future ? TEXT.quiet : TEXT.secondary, ls: 0.12 };
+        // a tune's coming syllables scroll in from the right edge, cut by it until they're in
+        label(ctx, text, x0 + 1, yc - barH / 2 - 4, { ...o, moving: x0 + 1 + labelWidth(ctx, text, o) > w });
+      }
     }
 
     // the pitch actually sung

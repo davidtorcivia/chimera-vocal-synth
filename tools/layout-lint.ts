@@ -1,8 +1,9 @@
 /**
  * Layout lint: a smoke test of the layout. Loads every mode at phone, tablet and desktop sizes in
  * headless Chromium, before and after audio starts, then some alternate states (every encoder page,
- * every creature, the 3D face, a phrase being spoken) and the duet page (`?show=`, with a short
- * duet it renders first), and fails on mistakes screenshot reviews kept missing:
+ * every creature, the 3D face, a phrase being spoken, Sing's tune and a recorded clip) and the duet
+ * page (`?show=`, with a short duet it renders first), and fails on
+ * mistakes screenshot reviews kept missing:
  *
  *  - overlap     two pieces of text or controls drawn over each other (DOM text, buttons, inputs,
  *                dials, and text drawn on canvases, which the page reports by wrapping fillText)
@@ -12,11 +13,16 @@
  *  - screens     two screens, or a screen and the top bar, overlapping
  *  - canvas-edge canvas text running off its canvas
  *  - h-scroll    the page scrolls sideways
- *  - small-text  DOM text under 8 px or canvas text under 7 px
+ *  - page-scroll the page scrolls down in a window it must fit: the plugin's windows, and a desktop
+ *                window (`fit`) as tall as Play needs, which Sing and Beatbox once overflowed
+ *  - small-text  text under 11 px, DOM or canvas (the label floor: docs/ui-redesign.md → Type)
+ *  - shift       an encoder's readout moving as the encoder turns (each is turned to its ends)
+ *  - order       on a phone, a screen you touch below one you only watch (`<Screen watch>`)
+ *  - stale       (warning) a canvas still showing a frame drawn for another size, so its text went unchecked
  *
  * Opt-outs, for things meant to sit on top of other things:
  *  - data-layout="overlay" on an element: it and its contents are exempt from overlap checks
- *    (the start prompt and the beat letter float over the face on purpose)
+ *    (the beat letter floats over the face on purpose)
  *  - data-layout="layered" on an element: its contents may overlap each other, but not anything
  *    outside it (piano keys: the black keys sit on the white ones)
  *  - data-layout="scatter" on a canvas: its text may overlap other text on the same canvas
@@ -37,17 +43,34 @@ const arg = (name: string) => {
   return i > 0 ? process.argv[i + 1] : undefined;
 };
 
-export const VIEWPORTS: { w: number; h: number }[] = [
+export const VIEWPORTS: { w: number; h: number; fit?: boolean }[] = [
   { w: 375, h: 812 }, // phone
   { w: 768, h: 1024 }, // tablet, portrait
   { w: 1024, h: 768 }, // tablet, landscape; small laptop
   { w: 1280, h: 720 },
   { w: 1366, h: 768 },
   { w: 1440, h: 900 },
+  // every tab fits a window Play fits (805 px at this width): Beatbox needed 893 and Sing 811.
+  // Speak's short Tube and Vocal folds drew 11 px labels at 10.9 here (canvases scaled by dpr, not
+  // by their rounded backing store).
+  { w: 1728, h: 808, fit: true },
   { w: 1920, h: 1080 },
   { w: 2560, h: 1440 },
 ];
 const MODES = ["play", "speak", "sing", "bestiary", "beatbox"] as const;
+/** with `--plugin` and `--url` of the UI harness: the window sizes and modes the plugin has */
+const PLUGIN_VIEWPORTS: { w: number; h: number }[] = [
+  { w: 1120, h: 800 }, // LAYOUT_MIN in crates/chimera-plugin/src/bridge.rs: a smaller window is this, zoomed out
+  // a window smaller than that one way only is laid out larger the other way, scaled: these are the first
+  // size with the grip dragged up to the least height (1280 x 500) or in to the least width (720 x 800)
+  { w: 2048, h: 800 },
+  { w: 1120, h: 1244 },
+  { w: 1280, h: 800 }, // the first size
+  { w: 1440, h: 900 },
+  { w: 1920, h: 1080 },
+  { w: 2560, h: 1440 },
+];
+const PLUGIN_MODES = ["sing", "play", "speak", "beatbox"] as const;
 
 interface Problem {
   kind: string;
@@ -60,6 +83,7 @@ function inspect(): Problem[] {
   type R = { x0: number; y0: number; x1: number; y1: number };
   type Atom = { el: Element; r: R; name: string; overlay: boolean; canvas?: HTMLCanvasElement; scatter?: boolean };
   const TOL = 1.5;
+  const MIN_TEXT = 11; // px: the label floor (styles.css, LABEL_MIN in src/ui/render/vector.ts)
   const problems: Problem[] = [];
   const rect = (b: DOMRect): R => ({ x0: b.left, y0: b.top, x1: b.right, y1: b.bottom });
   const meet = (a: R, b: R): R => ({ x0: Math.max(a.x0, b.x0), y0: Math.max(a.y0, b.y0), x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1) });
@@ -114,7 +138,7 @@ function inspect(): Problem[] {
     if (!el || !text.trim() || !visible(el) || el.closest("script,style,option")) continue;
     if (el.closest("textarea")) continue; // the textarea itself is the box
     const size = parseFloat(getComputedStyle(el).fontSize);
-    if (size < 8) problems.push({ kind: "small-text", detail: `${nameOf(el, text)} is ${size}px` });
+    if (size < MIN_TEXT) problems.push({ kind: "small-text", detail: `${nameOf(el, text)} is ${size}px` });
     const range = document.createRange();
     range.selectNodeContents(n);
     const own = rect(el.getBoundingClientRect());
@@ -141,12 +165,17 @@ function inspect(): Problem[] {
       if (!canvas.isConnected || !visible(canvas)) continue;
       const cb = canvas.getBoundingClientRect();
       if (cb.width < 2 || cb.height < 2) continue;
+      // still a frame drawn for another size (a layout change the canvas hasn't redrawn for yet)
+      if (!(window as unknown as { __canvasFresh: (c: HTMLCanvasElement) => boolean }).__canvasFresh(canvas)) {
+        problems.push({ kind: "stale", detail: `${where(canvas)} hadn't redrawn at its new size; its text wasn't checked`, warn: true });
+        continue;
+      }
       const sx = cb.width / canvas.width, sy = cb.height / canvas.height;
       const scatter = canvas.closest('[data-layout="scatter"]') !== null;
       for (const t of items) {
         const r: R = { x0: cb.left + t.x0 * sx, y0: cb.top + t.y0 * sy, x1: cb.left + t.x1 * sx, y1: cb.top + t.y1 * sy };
         const name = `canvas text "${t.text.slice(0, 40)}" in ${where(canvas)}`;
-        if (t.size * sy < 7) problems.push({ kind: "small-text", detail: `${name} is ${(t.size * sy).toFixed(1)}px` });
+        if (t.size * sy < MIN_TEXT - 0.05) problems.push({ kind: "small-text", detail: `${name} is ${(t.size * sy).toFixed(1)}px` });
         const inside = meet(r, rect(cb));
         if (w(r) - w(inside) > 2 || h(r) - h(inside) > 2) problems.push({ kind: "canvas-edge", detail: `${name} ${fmt(r)} runs off its canvas ${fmt(rect(cb))}` });
         consider(canvas, inside, name, { canvas, scatter });
@@ -197,6 +226,17 @@ function inspect(): Problem[] {
     }
   }
 
+  // on a phone, what you touch comes before what you only watch: no screen under a `watch` one
+  // (the phone layout: styles.css, max-width 640px)
+  if (window.innerWidth <= 640) {
+    const column = [...document.querySelectorAll(".wall > .right > .screen")].filter(visible).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    let watched: Element | undefined;
+    for (const s of column) {
+      if (s.classList.contains("watch")) watched ??= s;
+      else if (watched) problems.push({ kind: "order", detail: `${s.getAttribute("aria-label")} sits below ${watched.getAttribute("aria-label")}, which only shows: on a phone the screens you touch come first` });
+    }
+  }
+
   const sw = document.documentElement.scrollWidth;
   if (sw > window.innerWidth + 1) problems.push({ kind: "h-scroll", detail: `the page is ${sw}px wide in a ${window.innerWidth}px window` });
   return problems;
@@ -211,6 +251,17 @@ function hookCanvasText() {
   type Item = { text: string; x0: number; y0: number; x1: number; y1: number; size: number };
   const log = new Map<HTMLCanvasElement, Item[]>();
   (window as unknown as { __canvasText: typeof log }).__canvasText = log;
+  // each canvas's backing size when its current frame began: text recorded in a frame drawn before
+  // a resize is measured against a box it wasn't drawn for, so checks wait for a fresh frame
+  const frames = new Map<HTMLCanvasElement, [number, number]>();
+  const fresh = (c: HTMLCanvasElement): boolean => {
+    const b = c.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2) return true;
+    const f = frames.get(c);
+    const sx = b.width / c.width, sy = b.height / c.height;
+    return (!f || (f[0] === c.width && f[1] === c.height)) && Math.abs(sx - sy) <= 0.01 * Math.max(sx, sy);
+  };
+  Object.assign(window, { __canvasFresh: fresh, __canvasesFresh: () => [...log.keys()].every((c) => !c.isConnected || fresh(c)) });
   const P = CanvasRenderingContext2D.prototype;
   for (const name of ["fillRect", "clearRect"] as const) {
     const orig = P[name];
@@ -219,7 +270,10 @@ function hookCanvasText() {
       const t = this.getTransform(), c = this.canvas;
       const x0 = Math.min(t.a * x, t.a * (x + w)) + t.e, y0 = Math.min(t.d * y, t.d * (y + h)) + t.f;
       const x1 = Math.max(t.a * x, t.a * (x + w)) + t.e, y1 = Math.max(t.d * y, t.d * (y + h)) + t.f;
-      if (x0 <= 0 && y0 <= 0 && x1 >= c.width && y1 >= c.height) log.set(c as HTMLCanvasElement, []);
+      if (x0 <= 0 && y0 <= 0 && x1 >= c.width && y1 >= c.height) {
+        log.set(c as HTMLCanvasElement, []);
+        frames.set(c as HTMLCanvasElement, [c.width, c.height]);
+      }
     };
   }
   const fill = P.fillText;
@@ -270,16 +324,20 @@ async function main() {
   }
   const only = arg("only");
   const onlyMode = arg("mode");
-  const viewports = only ? VIEWPORTS.filter((v) => `${v.w}x${v.h}` === only).concat(VIEWPORTS.some((v) => `${v.w}x${v.h}` === only) ? [] : [{ w: +only.split("x")[0], h: +only.split("x")[1] }]) : VIEWPORTS;
-  const duet = !onlyMode || onlyMode === "duet";
-  const modes = onlyMode ? (onlyMode === "duet" ? [] : [onlyMode]) : MODES;
+  const plugin = process.argv.includes("--plugin");
+  const sizes = plugin ? PLUGIN_VIEWPORTS : VIEWPORTS;
+  const viewports = only ? sizes.filter((v) => `${v.w}x${v.h}` === only).concat(sizes.some((v) => `${v.w}x${v.h}` === only) ? [] : [{ w: +only.split("x")[0], h: +only.split("x")[1] }]) : sizes;
+  const duet = !plugin && (!onlyMode || onlyMode === "duet");
+  const modes = onlyMode ? (onlyMode === "duet" ? [] : [onlyMode]) : plugin ? PLUGIN_MODES : MODES;
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
-  // WebGL through SwiftShader, for the 3D face
-  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  // WebGL for the 3D face: the GPU through Metal on a Mac; elsewhere SwiftShader, which draws on the
+  // CPU (it took 6-15x the CPU time on an M4 for the same report, enough to stall the machine)
+  const gl = process.platform === "darwin" ? ["--use-angle=metal", "--ignore-gpu-blocklist"] : ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"];
+  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", ...gl] });
   let errors = 0, warnings = 0, views = 0;
-  for (const { w, h } of viewports) {
+  for (const { w, h, fit } of viewports as { w: number; h: number; fit?: boolean }[]) {
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
     await page.addInitScript(hookCanvasText);
     page.on("pageerror", (e) => {
@@ -289,8 +347,15 @@ async function main() {
     const check = async (state: string, wait = 350) => {
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(wait);
+      // a busy machine can be frames behind: give every canvas the chance to redraw at its size
+      await page.waitForFunction(() => (window as unknown as { __canvasesFresh: () => boolean }).__canvasesFresh(), undefined, { timeout: 3000, polling: 50 }).catch(() => {});
       views++;
       const problems = (await page.evaluate(inspect)) as Problem[];
+      // a plugin's window doesn't scroll: what's below the fold might as well not be there
+      if (plugin || fit) {
+        const over = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+        if (over > 0) problems.push({ kind: "page-scroll", detail: `${over}px taller than the window` });
+      }
       const errs = problems.filter((p) => !p.warn), warns = problems.filter((p) => p.warn);
       errors += errs.length;
       warnings += warns.length;
@@ -300,12 +365,51 @@ async function main() {
       if (errs.length) await page.screenshot({ path: `${out}/${w}x${h}-${state.replace(/[^a-z0-9]+/gi, "-")}.png`, fullPage: true });
     };
     const mode = (m: string) => page.getByRole("radio", { name: new RegExp(`^${m}$`, "i") }).click();
+    // every encoder shown, turned to each end and back: its readout must not move (a "0" turned to
+    // "+1" once dropped the unit to a second line, and the screen under it jumped)
+    const steady = async (state: string) => {
+      const moved = (await page.evaluate(async () => {
+        const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        const turn = (input: HTMLInputElement, v: string) => {
+          set.call(input, v);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        const out: string[] = [];
+        for (const input of document.querySelectorAll<HTMLInputElement>(".enc-input")) {
+          const enc = input.closest(".encoder")!;
+          if (!enc.checkVisibility()) continue;
+          const box = () => {
+            const b = enc.querySelector(".enc-readout")!.getBoundingClientRect();
+            const u = enc.querySelector(".enc-unit")?.getBoundingClientRect();
+            return [b.left, b.top, b.width, b.height, u?.left ?? 0, u?.top ?? 0].map((v) => Math.round(v * 2) / 2).join(",");
+          };
+          const was = input.value, at = box();
+          for (const end of [input.min, input.max]) {
+            turn(input, end);
+            await frame();
+            const now = box();
+            if (now !== at) out.push(`${enc.querySelector(".enc-label")?.textContent} at ${end === input.min ? "min" : "max"} "${(enc.querySelector(".enc-readout") as HTMLElement).innerText}": readout [${at}] became [${now}]`);
+          }
+          turn(input, was);
+          await frame();
+        }
+        return out;
+      })) as string[];
+      if (!moved.length) return;
+      errors += moved.length;
+      console.log(`\n${w}x${h} ${state}: ${moved.length} error(s)`);
+      for (const m of moved) console.log(`  ERROR ${"shift".padEnd(11)} ${m}`);
+    };
     // every encoder page of the screens on the right (each page has its own labels)
     const pages = async (state: string) => {
+      await steady(state);
       const tabs = page.locator(".right .enc-tab");
       for (let i = 1; i < (await tabs.count()); i++) {
         await tabs.nth(i).click();
-        await check(`${state}, controls page ${(await tabs.nth(i).textContent())?.trim()}`);
+        const name = `${state}, controls page ${(await tabs.nth(i).textContent())?.trim()}`;
+        await check(name);
+        await steady(name);
       }
       if (await tabs.count()) await tabs.first().click();
     };
@@ -323,13 +427,21 @@ async function main() {
       await page.close();
       continue;
     }
-    await page.goto(url, { waitUntil: "networkidle" });
+    // the plugin's page polls every frame, so its network is never idle
+    await page.goto(url, { waitUntil: plugin ? "load" : "networkidle" });
+    await page.waitForSelector(".topbar", { timeout: 15000 });
     for (const m of modes) {
       await mode(m);
       await check(m);
     }
-    await page.locator(".topbar button.primary").click();
+    // each tab's main button starts the audio: Play's breathes (then stop breathing). The plugin's
+    // voice is already running.
+    if (!plugin) {
+      await mode("play");
+      await page.getByRole("button", { name: /^Breathe$/ }).click();
+    }
     await page.waitForSelector(".load", { timeout: 15000 });
+    if (!plugin) await page.getByRole("button", { name: /^Stop$/ }).click();
     for (const m of modes) {
       await mode(m);
       await check(`${m} (running)`);
@@ -339,6 +451,24 @@ async function main() {
         await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
         await check("play (running), 3D", 2500);
         await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
+      }
+      // (the plugin sings what the host plays: no tunes, no clips)
+      if (m === "sing" && !plugin) {
+        // a tune singing the lyrics, then a recorded clip offered to save
+        await page.locator(".lyrics textarea").fill("a line of words long enough to keep on singing\nand a second line to be sure");
+        await page.getByRole("button", { name: /^Sing$/ }).click();
+        await check("sing (running), a tune", 1500);
+        // a slow machine may have sung it to the end meanwhile
+        const stop = page.getByRole("button", { name: /^Stop$/ });
+        if (await stop.count()) await stop.click();
+        await page.locator(".lyrics textarea").fill("one two");
+        const video = page.getByRole("button", { name: /^Video$/ });
+        if (await video.count()) {
+          await video.click();
+          // a whole song, recorded in real time on a CPU-drawn WebGL: slow when the machine is busy
+          await page.getByRole("link", { name: /^Save$/ }).waitFor({ timeout: 90000 });
+          await check("sing (running), a clip to save");
+        }
       }
       if (m === "speak") {
         // the gestural score with a phrase in it, mid-utterance

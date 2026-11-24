@@ -2,7 +2,8 @@
  * Sing mode's live path end to end, without a browser: the key handling in src/ui/singing.ts
  * talks to a stand-in for the audio engine that does what the worklet does with each message
  * (schedule at clock + lead, release by tag, cancel), on the real engine (the wasm build, in its
- * own instance as in the worklet).
+ * own instance as in the worklet). The store's tab switches are tested here too, against the
+ * same stand-in: a second file mocking the engine module would replace this one's mid-run.
  */
 import { describe, expect, mock, test } from "bun:test";
 import { initEngine, WasmVoice } from "./harness.ts";
@@ -15,10 +16,12 @@ const midiToHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 const FS = 48000;
 let voice = new WasmVoice(FS);
+/** what the worklet answers when a scheduled plan starts (singing.ts registers one at import) */
+let planned: (m: { type: "planned"; id: number; t0: number; end: number }) => void = () => {};
 const fakeEngine = {
   latest: null,
   voiceClock: () => voice.clock,
-  onPlanned: () => () => {},
+  onPlanned: (f: typeof planned) => ((planned = f), () => {}),
   scheduleGestures: (gs: Gesture[], lead = 0.006) => {
     voice.schedule(gs, lead);
   },
@@ -39,7 +42,7 @@ const engineStub = new Proxy(
   { get: (t, k) => (k in t ? t[k as string] : () => {}), set: (t, k, v) => ((t[k as string] = v), true) },
 );
 mock.module("../src/audio/AudioEngine.ts", () => ({ engine: engineStub }));
-const { useSing, singNoteOn, singNoteOff, playDemo, stopSinging } = await import("../src/ui/singing.ts");
+const { useSing, singNoteOn, singNoteOff, playTune, stopSinging, tickSinging } = await import("../src/ui/singing.ts");
 const gesturesOf = () => voice.score();
 /** breath the score is giving now (strength-weighted activation of breath gestures) */
 const breathNow = () => {
@@ -138,23 +141,162 @@ describe("Sing mode, live keys", () => {
     expect(hard.rms / soft.rms).toBeGreaterThan(1.6); // > 4 dB
   });
 
-  test("a demo still waiting for audio or the dictionary is cancelled by a stop", async () => {
+  test("a tune still waiting for audio or the dictionary is cancelled by a stop", async () => {
     voice = new WasmVoice(FS);
     let scheduled = 0;
     const schedule = engineStub.schedule as typeof fakeEngine.schedule;
     engineStub.schedule = (plan: { gestures: Gesture[] }) => (scheduled++, schedule(plan));
     let go!: () => void;
-    const waiting = playDemo("Made of air", MALE, () => new Promise<void>((r) => (go = r)));
+    const waiting = playTune("dreamy", MALE, () => new Promise<void>((r) => (go = r)));
     stopSinging(); // e.g. the mode changed while audio was starting
     go();
-    await waiting;
+    expect(await waiting).toBe(false);
     expect(scheduled).toBe(0);
-    expect(useSing.getState().demo).toBeNull();
-    await playDemo("Made of air", MALE, () => Promise.resolve());
+    expect(useSing.getState().playing).toBeNull();
+    expect(await playTune("dreamy", MALE, () => Promise.resolve())).toBe(true);
     expect(scheduled).toBe(1);
-    expect(useSing.getState().demo).toBe("Made of air");
+    expect(useSing.getState().playing).toBe("dreamy");
     stopSinging();
     engineStub.schedule = schedule;
+  });
+
+  test("a tune sings the player's own words and leaves them as they are; the end is reported once", async () => {
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    sing().setLyrics("my own words to sing");
+    sing().setCursor(2);
+    let ended = 0;
+    await playTune("joyful", MALE, () => Promise.resolve(), { onEnd: () => ended++ });
+    expect(sing().playing).toBe("joyful");
+    expect(sing().lyrics).toBe("my own words to sing");
+    expect(sing().syllables.map((s) => s.text)).toEqual(["my", "own", "words", "to", "sing"]);
+    expect(sing().cursor).toBe(2);
+    // the syllable being sung, in the player's lyrics: the first, a little after the first beat
+    planned({ type: "planned", id: 1, t0: voice.clock - 0.5, end: 0 });
+    tickSinging();
+    expect(sing().at).toBe(0);
+    // sung to the end
+    planned({ type: "planned", id: 1, t0: voice.clock - 1000, end: 0 });
+    tickSinging();
+    tickSinging();
+    expect(sing().playing).toBeNull();
+    expect(ended).toBe(1);
+    // stopped: not reported as ended
+    await playTune("joyful", MALE, () => Promise.resolve(), { onEnd: () => ended++ });
+    stopSinging();
+    expect(ended).toBe(1);
+    // words typed during a tune stop it
+    await playTune("joyful", MALE, () => Promise.resolve());
+    sing().setLyrics("typed during the song");
+    expect(sing().playing).toBeNull();
+    expect(sing().lyrics).toBe("typed during the song");
+  });
+
+  test("a run's hooks: no start for a run stopped while starting; a stop from anywhere is reported", async () => {
+    // Video's clip lives in these: it once began recording for a start that had been cancelled
+    voice = new WasmVoice(FS);
+    const log: string[] = [];
+    const hooks = { onStart: () => log.push("start"), onEnd: () => log.push("end"), onStop: () => log.push("stop") };
+    let go!: () => void;
+    const waiting = playTune("joyful", MALE, () => new Promise<void>((r) => (go = r)), hooks);
+    stopSinging(); // the mode or body changed while audio was starting
+    go();
+    expect(await waiting).toBe(false);
+    expect(log).toEqual([]);
+    await playTune("joyful", MALE, () => Promise.resolve(), hooks);
+    expect(log).toEqual(["start"]);
+    stopSinging();
+    expect(log).toEqual(["start", "stop"]);
+    // a start that throws (the browser can't record): nothing is sung
+    let scheduled = 0;
+    const schedule = engineStub.schedule as typeof fakeEngine.schedule;
+    engineStub.schedule = (plan: { gestures: Gesture[] }) => (scheduled++, schedule(plan));
+    const failed = await playTune("joyful", MALE, () => Promise.resolve(), { onStart: () => { throw new Error("no recorder"); } }).catch(() => "threw");
+    expect(failed).toBe("threw");
+    expect(scheduled).toBe(0);
+    expect(useSing.getState().playing).toBeNull();
+    engineStub.schedule = schedule;
+  });
+
+  test("every demo song can be chosen and sings its own words a syllable to a note; the player's words come back with a mood", async () => {
+    // #87's tunes menu left out the contributed demo songs ("Ночной ветер", Daisy Bell)
+    const { DEMO_SONGS } = await import("../src/wasm/engine.ts");
+    const { TUNES } = await import("../src/song/tunes.ts");
+    const melodies = TUNES.map((t) => JSON.stringify(t.phrases.flat()));
+    for (const d of DEMO_SONGS) expect(melodies).toContain(JSON.stringify(d.notes.map(([m, b]) => [m, b])));
+    const songs = TUNES.filter((t) => t.lyrics !== undefined);
+    expect(songs.map((t) => t.name)).toContain("Ночной ветер");
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    let sent: { gestures: Gesture[] } | null = null;
+    const schedule = engineStub.schedule as typeof fakeEngine.schedule;
+    engineStub.schedule = (plan: { gestures: Gesture[] }) => ((sent = plan), schedule(plan));
+    sing().setLyrics("my own words");
+    for (const song of songs) {
+      sing().setTune(song.id);
+      expect(sing().lyrics).toBe(song.lyrics!);
+      expect(await playTune(song.id, MALE, () => Promise.resolve())).toBe(true);
+      expect(sent).not.toBeNull();
+      // a syllable to each note: the n-th note is sung while the n-th syllable is lit
+      const beat = 60 / song.bpm;
+      const n = Math.min(5, song.phrases[0].length - 1);
+      const start = song.phrases[0].slice(0, n).reduce((t, [, b]) => t + b * beat, 0.35);
+      planned({ type: "planned", id: 1, t0: voice.clock - start - 0.01, end: 0 });
+      tickSinging();
+      expect(sing().at).toBe(n % sing().syllables.length);
+      stopSinging();
+    }
+    sing().setTune("joyful");
+    expect(sing().lyrics).toBe("my own words");
+    // edited words are fitted to the song like any tune's
+    sing().setTune(songs[0].id);
+    sing().setLyrics("new words");
+    expect(await playTune(songs[0].id, MALE, () => Promise.resolve())).toBe(true);
+    stopSinging();
+    engineStub.schedule = schedule;
+    sing().setTune("dreamy");
+    sing().setLyrics("Hello there");
+  });
+
+  test("Turkish lyrics: TR reads them and a tune sings them; a demo song is read as English, and the player's language comes back with a mood", async () => {
+    const { TUNES } = await import("../src/song/tunes.ts");
+    const { DEFAULT_LYRICS } = await import("../src/ui/singing.ts");
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    sing().setTune("joyful");
+    sing().setLyrics(DEFAULT_LYRICS);
+    // the opening words give way to Turkish's, and Turkish letters are read
+    sing().setLang("tr");
+    expect(sing().lyrics).toBe("Merhaba, ben havadan yapılmış bir sesim.");
+    expect(sing().syllables.map((s) => s.text).slice(0, 5)).toEqual(["Mer", "ha", "ba", "ben", "ha"]);
+    sing().setLyrics("çok güzel");
+    expect(sing().syllables.map((s) => s.text)).toEqual(["çok", "gü", "zel"]);
+    expect(await playTune("joyful", MALE, () => Promise.resolve())).toBe(true);
+    expect(sing().syllables.map((s) => s.text)).toEqual(["çok", "gü", "zel"]);
+    stopSinging();
+    // a demo song in English brings its words, read as English
+    const song = TUNES.find((t) => t.lyrics !== undefined && /^[ -~\s]*$/.test(t.lyrics))!;
+    sing().setTune(song.id);
+    expect(sing().lang).toBe("en");
+    expect(sing().lyrics).toBe(song.lyrics!);
+    sing().setTune("joyful");
+    expect(sing().lang).toBe("tr");
+    expect(sing().lyrics).toBe("çok güzel");
+    sing().setLang("en");
+    sing().setTune("dreamy");
+    sing().setLyrics("Hello there");
+  });
+
+  test("empty lyrics sing the tune on la, highlighting nothing", async () => {
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    sing().setLyrics("");
+    expect(await playTune("somber", MALE, () => Promise.resolve())).toBe(true);
+    planned({ type: "planned", id: 1, t0: voice.clock - 0.5, end: 0 });
+    tickSinging();
+    expect(sing().at).toBe(-1);
+    stopSinging();
+    sing().setLyrics("Hello there");
   });
 
   test("a quick next note drops the last one's breath-out; leaving Sing cancels a pending ending", () => {
@@ -232,5 +374,134 @@ describe("keys pressed before the audio has started", () => {
     expect(scheduled).toBe(0);
     expect(useSing.getState().cursor).toBe(before);
     engineStub.scheduleGestures = sg;
+  });
+});
+
+describe("settings that belong to one tab stay in it", () => {
+  const sent: { source: Record<string, unknown>[]; artic: Record<string, unknown>[] } = { source: [], artic: [] };
+  const recording = async () => {
+    const { useStore } = await import("../src/ui/store.ts");
+    const { beatReady } = await import("../src/wasm/engine.ts");
+    engineStub.setSource = (v: Record<string, unknown>) => void sent.source.push(v);
+    engineStub.setArtic = (v: Record<string, unknown>) => void sent.artic.push(v);
+    useStore.setState({ mode: "play", started: true, body: MALE });
+    useStore.getState().setSource({ voiced: true });
+    sent.source.length = sent.artic.length = 0;
+    return { st: useStore.getState, beatReady };
+  };
+  const done = () => {
+    delete engineStub.setSource;
+    delete engineStub.setArtic;
+  };
+
+  test("Play's Whisper doesn't make Speak or Sing voiceless, and Play whispers again on return", async () => {
+    const { st } = await recording();
+    st().setSource({ voiced: false });
+    st().setMode("speak");
+    expect(st().source.voiced).toBe(true);
+    expect(sent.source.at(-1)).toEqual({ voiced: true });
+    st().setMode("sing");
+    expect(st().source.voiced).toBe(true);
+    st().setMode("play");
+    expect(st().source.voiced).toBe(false);
+    expect(sent.source.at(-1)).toEqual({ voiced: false });
+    done();
+  });
+
+  test("Whisper is kept through Bestiary and Beatbox too, and left alone when off", async () => {
+    const { st } = await recording();
+    st().setSource({ voiced: false });
+    st().setMode("bestiary");
+    st().setMode("beatbox");
+    expect(st().source.voiced).toBe(true);
+    st().setMode("play");
+    expect(st().source.voiced).toBe(false);
+    st().setSource({ voiced: true });
+    sent.source.length = 0;
+    st().setMode("speak");
+    st().setMode("play");
+    expect(st().source.voiced).toBe(true);
+    expect(sent.source.filter((v) => "voiced" in v)).toEqual([]);
+    done();
+  });
+
+  test("leaving Beatbox puts back the pose from before it", async () => {
+    const { st, beatReady } = await recording();
+    st().setArtic({ jaw: 0.9, lipAp: 1.2, lipProt: 0.3 }, false);
+    const before = { ...st().artic };
+    st().setMode("beatbox");
+    const ready = beatReady(MALE);
+    expect(st().artic.jaw).toBeCloseTo(ready.jaw!, 6);
+    expect(st().artic.lipAp).toBeCloseTo(ready.lipAp!, 6);
+    st().setMode("play");
+    expect(st().artic).toEqual(before);
+    expect(st().tipFree).toBe(false);
+    expect(sent.artic.at(-1)).toEqual(before);
+    done();
+  });
+
+  test("a pose dragged inside Beatbox doesn't follow the player out either", async () => {
+    const { st } = await recording();
+    st().setArtic({ jaw: 0.7, lipAp: 0.8 }, true);
+    const before = { ...st().artic };
+    st().setMode("beatbox");
+    st().setArtic({ jaw: 0.2, tbY: 2 });
+    st().setMode("speak");
+    expect(st().artic).toEqual(before);
+    done();
+  });
+});
+
+describe("a main button pressed before the audio is up", () => {
+  const store = async () => (await import("../src/ui/store.ts")).useStore;
+  const failing = () => Promise.reject(new Error("no audio device"));
+
+  test("Breathe breathes once the audio starts, but not in a tab switched to meanwhile", async () => {
+    const useStore = await store();
+    const st = useStore.getState;
+    useStore.setState({ started: false, mode: "play", hold: false });
+    let pending = st().toggleBreath();
+    startAudio();
+    await pending;
+    expect(st().hold).toBe(true);
+    st().setHold(false);
+    // a tab switched to meanwhile (Sing breathes by itself: a held breath would drone), and away
+    // and back again: the press belonged to the Play the player left
+    for (const away of [["sing"], ["sing", "play"]] as const) {
+      useStore.setState({ started: false, mode: "play", hold: false });
+      pending = st().toggleBreath();
+      for (const m of away) st().setMode(m);
+      startAudio();
+      await pending;
+      expect(st().hold).toBe(false);
+    }
+  });
+
+  test("a second press of Breathe while the audio starts turns it off again", async () => {
+    const useStore = await store();
+    const st = useStore.getState;
+    useStore.setState({ started: false, mode: "bestiary", hold: false });
+    const first = st().toggleBreath();
+    const second = st().toggleBreath();
+    startAudio();
+    await Promise.all([first, second]);
+    expect(st().hold).toBe(false);
+    useStore.setState({ mode: "play" });
+  });
+
+  test("a failed start leaves Breathe off and the beat stopped, so the buttons offer a retry", async () => {
+    const useStore = await store();
+    const start = engineStub.start;
+    engineStub.start = failing;
+    useStore.setState({ started: false, mode: "play", hold: false });
+    await useStore.getState().toggleBreath();
+    expect(useStore.getState().hold).toBe(false);
+    expect(useStore.getState().startError).toBe("no audio device");
+    useStore.getState().setMode("beatbox");
+    useStore.getState().setBeatPlaying(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useStore.getState().beat.playing).toBe(false);
+    engineStub.start = start;
+    useStore.setState({ startError: null });
   });
 });

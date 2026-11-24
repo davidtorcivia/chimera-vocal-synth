@@ -25,8 +25,8 @@ import { bodyLabel } from "../body.ts";
 import type { ViewFlags } from "../render/anatomy.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { V } from "../colors.ts";
-import { g2p } from "../speech.ts";
-import { lyricsToSyllables } from "../../wasm/engine.ts";
+import { g2p, zh } from "../speech.ts";
+import { hasHan, lyricsToSyllables } from "../../wasm/engine.ts";
 import { sungWords, wordAt, type Melody, type SungWords } from "../../show/words.ts";
 import type { OverlayFn } from "./AnatomyView.tsx";
 
@@ -80,10 +80,11 @@ export function DuetPage(props: { id: string }) {
       // the words: syllables as the CLI splits them (the pronouncing dictionary first, as it does)
       const melodies = await Promise.all(show.voices.map((v) => (v.melody ? fetchOk(base + v.melody).then((r) => r.json() as Promise<Melody>) : null)));
       if (melodies.some(Boolean)) await g2p.load().catch(() => {});
+      if (melodies.some((m) => m && !m.syllables && hasHan(m.lyrics))) await zh.load().catch(() => {});
       const words = melodies.map((m) => {
         if (!m) return null;
         try {
-          return sungWords(m, lyricsToSyllables(m.lyrics), show.spell);
+          return sungWords(m, m.syllables ?? lyricsToSyllables(m.lyrics), show.spell);
         } catch (e) {
           console.warn("duet: no words for a voice:", e);
           return null;

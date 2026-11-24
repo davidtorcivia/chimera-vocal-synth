@@ -794,6 +794,7 @@ fn plan_core(segs_in: &[PieSeg], glides: &[usize], question: bool, o: &PlanOptio
             stress: Some(if s.is_vowel() && s.accent { 1 } else { 0 }),
             f0: None,
             word_end: Some(s.word_end),
+            ..Default::default()
         })
         .collect();
     let po = PlanOptions { accent: Some(p.accent), intonation: Some(if question { Intonation::Question } else { Intonation::Statement }), ..o.clone() };

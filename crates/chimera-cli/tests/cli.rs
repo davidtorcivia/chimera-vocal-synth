@@ -87,6 +87,50 @@ fn calibrate_consonants_reproduces_the_committed_table() {
     );
 }
 
+/// `--missing` fits only the vowels the table lacks and leaves every other entry as it was, byte
+/// for byte: with nothing missing it rewrites the file unchanged.
+#[test]
+fn calibrate_vowels_missing_changes_nothing_when_nothing_is_missing() {
+    let committed = std::fs::read_to_string(format!("{PHONETICS}/vowelTargets.generated.json")).unwrap();
+    let out = tmp("vowelTargets-missing.json");
+    std::fs::write(&out, &committed).unwrap();
+    chimera(&["calibrate", "vowels", "all", "--missing", "--out", &out]);
+    assert!(std::fs::read_to_string(&out).unwrap() == committed, "nothing missing: the file must not change");
+}
+
+/// `--missing` fits a vowel the file lacks and leaves every other entry as it was. An apical vowel
+/// is fitted with its tip and lips pinned even though [i], whose lips it takes, is not refitted
+/// (it came out unpinned, lips narrowed, with no word of it).
+#[test]
+fn calibrate_vowels_missing_fits_only_the_missing_vowel_and_pins_an_apical_one() {
+    let committed = std::fs::read_to_string(format!("{PHONETICS}/vowelTargets.generated.json")).unwrap();
+    // the first ɿ entry is the male body's: cut it out of the text
+    let key = "\"ɿ\": {";
+    let a = committed[..committed.find(key).unwrap()].rfind('\n').unwrap();
+    let b = a + 1 + committed[a + 1..].find("\n  },\n").unwrap() + "\n  },".len();
+    let without = format!("{}{}", &committed[..a], &committed[b..]);
+    let json = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+    assert!(json(&without)["male"].get("ɿ").is_none() && json(&without)["female"].get("ɿ").is_some());
+    let out = tmp("vowelTargets-missing-apical.json");
+    std::fs::write(&out, &without).unwrap();
+    chimera(&["calibrate", "vowels", "male", "--missing", "--out", &out]);
+    let (was, now) = (json(&committed), json(&std::fs::read_to_string(&out).unwrap()));
+    for body in ["male", "female", "child"] {
+        for (ipa, entry) in was[body].as_object().unwrap() {
+            if (body, ipa.as_str()) != ("male", "ɿ") {
+                assert_eq!(&now[body][ipa], entry, "{body} {ipa} changed");
+            }
+        }
+    }
+    let (fit, i, old) = (&now["male"]["ɿ"]["artic"], &now["male"]["i"]["artic"], &was["male"]["ɿ"]["artic"]);
+    for k in ["lipAp", "lipProt", "lipWidth"] {
+        assert_eq!(fit[k], i[k], "ɿ's {k} is [i]'s");
+    }
+    for k in ["ttX", "ttY", "ttCurl"] {
+        assert_eq!(fit[k], old[k], "ɿ's {k} is pinned");
+    }
+}
+
 /// About 100 s in release. Not byte-identical: the Nelder–Mead fit runs 1 800 + 2 × 1 000
 /// iterations on a flat minimum, which amplifies last-ulp differences between V8's libm and Rust's
 /// (in the airway geometry and the transfer function) into ~1e-4 changes of the fitted posture.
@@ -375,6 +419,56 @@ fn render_notes_artic_tracks_follow_the_sound_without_changing_it() {
     let closed = (85..105).map(ap).fold(f64::MAX, f64::min);
     let open = (105..125).map(ap).fold(f64::MIN, f64::max);
     assert!(closed < 0.1 && open > 0.5, "lipAp closed {closed}, open {open}");
+}
+
+#[test]
+fn render_notes_sings_a_front_ends_syllables_without_lyrics() {
+    // a language front end writes IPA syllables; no lyrics, no pronouncing dictionary
+    let melody = tmp("melody-syllables.json");
+    let syl = |onset: &[&str], v: &str, coda: &[&str]| {
+        let segs = |xs: &[&str]| xs.iter().map(|x| serde_json::json!({ "ipa": x })).collect::<Vec<_>>();
+        serde_json::json!({ "text": v, "onset": segs(onset), "nucleus": { "ipa": v }, "coda": segs(coda), "wordEnd": true, "phraseEnd": false })
+    };
+    let j = serde_json::json!({
+        "bpm": 120, "t0": 0, "notes": [[0, 1], [67, 1], [63, 0.5], [60, 1.5]],
+        "syllables": [syl(&["t"], "eɪ", &["k"]), syl(&["m"], "aɪ", &[]), syl(&["h"], "æ", &["n", "d"])],
+    });
+    std::fs::write(&melody, j.to_string()).unwrap();
+    let (stem, tracks) = (tmp("notes-syllables"), tmp("notes-syllables-artic.json"));
+    let stdout = chimera(&["render", "notes", &melody, &stem, "female", "--artic", &tracks]);
+    assert!(stdout.contains("3 notes"), "{stdout}");
+    let t: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tracks).unwrap()).unwrap();
+    let keys: Vec<&str> = t["keys"].as_array().unwrap().iter().map(|k| k.as_str().unwrap()).collect();
+    let lip = keys.iter().position(|k| *k == "lipAp").unwrap();
+    let ap = |i: usize| t["frames"][i][lip].as_f64().unwrap();
+    // the /m/ of the second syllable (its note starts at 1 s) closes the lips, its vowel opens them
+    let closed = (85..105).map(ap).fold(f64::MAX, f64::min);
+    let open = (105..125).map(ap).fold(f64::MIN, f64::max);
+    assert!(closed < 0.1 && open > 0.5, "lipAp closed {closed}, open {open}");
+}
+
+#[test]
+fn the_cli_reads_russian_lyrics() {
+    // The CLI reads lyrics through its own call into the router (on #85, a list of its own): a
+    // language missing there is skipped, and the cargo tests on lyrics_to_syllables still pass
+    let syl: serde_json::Value = serde_json::from_str(&chimera(&["syllables", "в лесу́ молоко́"])).unwrap();
+    let texts: Vec<&str> = syl.as_array().unwrap().iter().map(|s| s["text"].as_str().unwrap()).collect();
+    assert_eq!(texts, ["в ле", "су\u{301}", "мо", "ло", "ко\u{301}"]);
+    // and a melody with Russian lyrics renders one syllable per note
+    let melody = tmp("melody-russian.json");
+    let j = serde_json::json!({ "bpm": 120, "lyrics": "молоко́", "notes": [[60, 1], [62, 1], [64, 2]] });
+    std::fs::write(&melody, j.to_string()).unwrap();
+    let stdout = chimera(&["render", "notes", &melody, &tmp("notes-russian"), "male"]);
+    assert!(stdout.contains("3 notes"), "{stdout}");
+}
+
+#[test]
+fn render_notes_reads_chinese_lyrics_through_the_mandarin_front_end() {
+    // the bundled lexicon (public/data/mandarin.txt.gz): one note per character, 银行 as yin2 hang2
+    let melody = tmp("melody-zh.json");
+    std::fs::write(&melody, r#"{"bpm": 120, "t0": 0, "lyrics": "我爱银行，你好", "notes": [[60,1],[62,1],[64,1],[65,1],[64,1],[62,2]]}"#).unwrap();
+    let stdout = chimera(&["render", "notes", &melody, &tmp("notes-zh"), "male"]);
+    assert!(stdout.contains("6 notes"), "{stdout}");
 }
 
 #[test]

@@ -8,6 +8,9 @@ export interface EncoderSpec {
   max: number;
   /** logarithmic mapping (pitch, glide) */
   log?: boolean;
+  /** the grain of a value the caller rounds (a semitone, 5 % of tempo): an arrow key moves one step.
+   *  Without it an arrow moves a thousandth of the dial, which rounding put straight back. Linear only. */
+  step?: number;
   onChange: (v: number) => void;
   /** big numeral and its unit */
   format: (v: number) => { value: string; unit: string };
@@ -24,7 +27,7 @@ const SPAN = (270 * Math.PI) / 180;
  * (touch-action: pan-y) and only horizontal drags edit.
  */
 export function Encoder(props: EncoderSpec & { slot: number }) {
-  const { label, value, min, max, log, onChange, format, slot } = props;
+  const { label, value, min, max, log, step, onChange, format, slot } = props;
   const id = useId();
   const color = SLOTS[slot % 4];
   const toPos = (v: number) => (log ? (Math.log(v) - Math.log(min)) / (Math.log(max) - Math.log(min)) : (v - min) / (max - min));
@@ -34,6 +37,7 @@ export function Encoder(props: EncoderSpec & { slot: number }) {
   };
   const pos = Math.min(1, Math.max(0, toPos(value)));
   const shown = format(value);
+  const room = readoutRoom(format, fromPos);
   const drag = useRef<{ x: number; y: number; pos: number; id: number; touch: boolean } | null>(null);
   const at = (u: number, r: number) => [Math.cos(A0 - u * SPAN) * r, -Math.sin(A0 - u * SPAN) * r];
   const [x0, y0] = at(0, 30), [x1, y1] = at(pos, 30), [px, py] = at(pos, 23);
@@ -79,20 +83,53 @@ export function Encoder(props: EncoderSpec & { slot: number }) {
           id={id}
           className="enc-input"
           type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(pos * 1000)}
-          onChange={(e) => onChange(fromPos(Number(e.target.value) / 1000))}
+          {...(step && !log
+            ? { min, max, step, value, onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(Number(e.target.value)) }
+            : { min: 0, max: 1000, step: 1, value: Math.round(pos * 1000), onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(fromPos(Number(e.target.value) / 1000)) })}
           aria-valuetext={`${shown.value} ${shown.unit}`.trim()}
         />
       </div>
-      <output className="enc-value" htmlFor={id}>
-        {shown.value}
-      </output>
-      <span className="enc-unit">{shown.unit}</span>
+      <div className="enc-readout">
+        <span className="enc-value-box">
+          {room.values.map((w) => (
+            <span key={w} className="enc-value enc-sizer" aria-hidden="true">
+              {w}
+            </span>
+          ))}
+          <output className="enc-value" htmlFor={id}>
+            {shown.value}
+          </output>
+        </span>
+        {room.units.length > 0 && (
+          <span className="enc-unit-box">
+            {room.units.map((w) => (
+              <span key={w} className="enc-unit enc-sizer" aria-hidden="true">
+                {w}
+              </span>
+            ))}
+            <span className="enc-unit">{shown.unit}</span>
+          </span>
+        )}
+      </div>
     </div>
   );
+}
+
+/**
+ * Everything an encoder can show, as hidden copies stacked under its readout so the readout is
+ * always as wide as the widest: turning the dial never moves the unit or wraps it under the value
+ * ("0" turned to "+1" once dropped "semitones" to a second line and the screen under it jumped).
+ * The range is sampled (a unit can change along it: Pitch's note name, Soft palate's "Shut"), and
+ * digits are written as 0, the widest in Hershey, which has no tabular figures.
+ */
+function readoutRoom(format: EncoderSpec["format"], at: (pos: number) => number) {
+  const values = new Set<string>(), units = new Set<string>();
+  for (let i = 0; i <= 96; i++) {
+    const f = format(at(i / 96));
+    values.add(f.value.replace(/\d/g, "0"));
+    if (f.unit) units.add(f.unit.replace(/\d/g, "0"));
+  }
+  return { values: [...values], units: [...units] };
 }
 
 export interface EncoderPage {

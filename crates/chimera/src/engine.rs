@@ -15,7 +15,7 @@ use crate::control::score::{Gesture, GestureScore};
 use crate::creatures::types::CreatureDef;
 use crate::creatures::voice::{CreatureTelemetry, CreatureVoice};
 use crate::phonetics::beatbox::{BeatStep, MAX_SOUND_GESTURES};
-use crate::voice::human_voice::{HumanVoice, SourcePatch, VoiceTelemetry};
+use crate::voice::human_voice::{HumanVoice, SourcePatch, VoiceTelemetry, oversample_for};
 
 /// Samples per sub-block: the browser's render quantum, kept for every host.
 pub const SUB_BLOCK: usize = 128;
@@ -66,7 +66,7 @@ impl Engine {
     }
 
     fn make_voice(fs: f64, body: BodyMix) -> HumanVoice {
-        let mut v = HumanVoice::new(fs, body.body(), if fs > 60000.0 { 1 } else { 2 });
+        let mut v = HumanVoice::new(fs, body.body(), oversample_for(fs));
         v.set_source(&SourcePatch::f0(default_f0(body)));
         v
     }
@@ -87,8 +87,28 @@ impl Engine {
     /// new body's default), posture, breath. Allocates (a new airway network).
     pub fn set_body(&mut self, body: impl Into<BodyMix>) -> VoiceInfo {
         let body: BodyMix = body.into();
+        let mut next = Self::make_voice(self.sample_rate, BodyMix::new(body.female, body.child));
+        self.install_voice(&mut next, body)
+    }
+
+    /// A voice ready for [`Engine::install_voice`] on an audio thread. Allocates, so build it
+    /// elsewhere. It has rendered a moment of silence, because a voice's first control step sizes
+    /// some of its buffers.
+    pub fn prepare_voice(sample_rate: f64, body: impl Into<BodyMix>) -> Box<HumanVoice> {
+        let body: BodyMix = body.into();
+        let mut voice = Box::new(Self::make_voice(sample_rate, BodyMix::new(body.female, body.child)));
+        voice.render(&mut [0.0; SUB_BLOCK]);
+        voice
+    }
+
+    /// Switch to a voice built for this `body` and sample rate, as [`Engine::set_body`] does.
+    /// Allocates and frees nothing: `voice` holds the old voice afterwards, for the caller to free
+    /// where it may.
+    pub fn install_voice(&mut self, voice: &mut HumanVoice, body: impl Into<BodyMix>) -> VoiceInfo {
+        let body: BodyMix = body.into();
         let body = BodyMix::new(body.female, body.child);
-        let prev = core::mem::replace(&mut self.voice, Self::make_voice(self.sample_rate, body));
+        core::mem::swap(&mut self.voice, voice);
+        let prev = voice;
         self.body = body;
         let mut src = SourcePatch::from_source(&prev.source);
         src.f0 = Some(default_f0(body));
@@ -100,6 +120,7 @@ impl Engine {
         self.voice.set_articulation(&target, Some(prev.artic.tip_free));
         // the performer's breath, not the voice's (which includes breath from the score)
         self.voice.set_gate(self.gate_level);
+        self.voice.bend = prev.bend;
         // the new voice's clock starts at zero: keep the beat's phase across the switch, and
         // queue again the hits the old voice's score was holding (built for the new body)
         self.beat.body = body;
@@ -114,6 +135,11 @@ impl Engine {
 
     pub fn set_source(&mut self, values: &SourcePatch) {
         self.voice.set_source(values);
+    }
+
+    /// Bend the voice's pitch by this ratio (1: none), on top of whatever it is singing.
+    pub fn set_bend(&mut self, ratio: f64) {
+        self.voice.bend = ratio;
     }
 
     pub fn set_gate(&mut self, level: f64) {
@@ -203,6 +229,12 @@ impl Engine {
         &self.voice.score
     }
 
+    /// How many of the human voice's decaying states are denormal numbers (for tests: none should
+    /// be; see `AirwayNetwork::flush_tiny`).
+    pub fn denormal_states(&self) -> usize {
+        self.voice.denormal_states()
+    }
+
     /// The voice clock (s): the time base of scheduled gestures.
     pub fn clock(&self) -> f64 {
         self.voice.clock
@@ -263,6 +295,44 @@ impl Engine {
 
     pub fn beat(&self) -> &BeatPlayer {
         &self.beat
+    }
+
+    /// Run the sequencer from a host's transport for this block: see [`BeatPlayer::follow`].
+    pub fn beat_follow(&mut self, beats: f64, beats_end: f64, bpm: f64, delay: f64) {
+        let voice = &mut self.voice;
+        let clock = voice.clock;
+        self.beat.follow(clock, beats, beats_end, bpm, delay, &mut |gs| voice.schedule(gs));
+    }
+
+    /// Stop following the host. Hits already scheduled would still sound, so they go too.
+    pub fn beat_stop_following(&mut self) {
+        if self.beat.following() {
+            self.beat.stop_following();
+            self.voice.cancel_score();
+        }
+    }
+
+    /// Set-up time this sound needs before its hit (s). No allocation.
+    pub fn beat_lead(&mut self, id: &str) -> f64 {
+        BeatPlayer::lead_in_with(id, self.body, &mut self.scratch)
+    }
+
+    /// Play one sound with its acoustic hit at `hit` on the voice clock, lasting `len` unless it's
+    /// released earlier by `tag`. No allocation.
+    pub fn beat_hit_at(&mut self, step: &BeatStep, hit: f64, len: f64, tag: Option<f64>) {
+        self.scratch.clear();
+        self.beat.gestures(step, hit, len, &mut self.scratch);
+        if tag.is_some() {
+            for g in self.scratch.iter_mut() {
+                g.tag = tag;
+            }
+        }
+        self.voice.schedule(&self.scratch);
+    }
+
+    /// End the gestures with this tag at this time on the voice clock.
+    pub fn release_at(&mut self, tag: f64, t: f64) {
+        self.voice.score.release(tag, t);
     }
 
     /// Play one beatbox sound as soon as the mouth can make it.

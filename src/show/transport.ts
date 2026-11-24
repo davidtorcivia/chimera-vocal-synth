@@ -10,6 +10,8 @@
  * the source finishes rendering. The context leaving "running" (an iOS interruption, the page
  * going to the background), or failing to resume after Play, pauses the transport where it was.
  */
+import { preferPlaybackSession } from "../audio/session.ts";
+
 export type TransportState = { playing: boolean; time: number; duration: number; epoch: number };
 
 export class Transport {
@@ -66,6 +68,7 @@ export class Transport {
   play(): void {
     if (!this.buffer || this.playing) return;
     const gen = ++this.generation;
+    preferPlaybackSession();
     this.ctx.resume().catch(() => {
       // no audio (an interruption, a browser's refusal): back to paused, where it was
       if (gen === this.generation && this.playing) this.pause();

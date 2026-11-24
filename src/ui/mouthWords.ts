@@ -3,7 +3,7 @@
  * the lips as it sounds. When the next one starts, it shrinks, dims and flies up and away, so a
  * fast scat run leaves a short trail instead of a pile-up.
  */
-import { hfont, label, seg } from "./render/vector.ts";
+import { hfont, label, LABEL_MIN, labelWidth, seg } from "./render/vector.ts";
 import type { OverlayFn } from "./components/AnatomyView.tsx";
 
 /** What is being said now. `key` changes with each new syllable or word (equal text may repeat). */
@@ -56,23 +56,29 @@ export function mouthWords(now: () => MouthWord | null, color: string, side: 1 |
     // no room in front of the mouth (a narrow screen the head fills): the words go under the chin,
     // below the neck, and fall away downwards
     const below = ahead < 60;
-    const room = below ? w - 16 : ahead;
     const base = Math.max(26, Math.min(64, r.pxPerCm * 1.7));
     const by = Math.min(h - 14, ly + r.pxPerCm * 18);
+    let newestUnder = below;
     for (const { word: wd, left } of trail) {
       const age = left === null ? 0 : clock - left;
       const u = Math.min(1, age / FADE);
       const text = wd.text.toUpperCase();
       ctx.font = hfont(base, "m");
       const wide = ctx.measureText(text).width * 1.08;
+      // label() draws nothing under LABEL_MIN: a word that wouldn't fit in front of the mouth even
+      // at that size goes under the chin, where the whole width is free
+      const under = below || (wide * LABEL_MIN) / base > ahead;
+      const room = under ? w - 16 : ahead;
       const size = (wide > room ? (base * room) / wide : base) * (1 - 0.55 * u);
       const alpha = left === null ? 1 : 0.75 * (1 - u) ** 1.5;
       const o = { size, color, weight: "m" as const, ls: 0.05, alpha, moving: left !== null };
-      if (below) {
-        const half = (Math.min(wide, room) * (1 - 0.55 * u)) / 2;
+      if (left === null) newestUnder = under;
+      if (under) {
+        // centred by the width it is drawn at (the floor can make it wider than the size asked for)
+        const half = labelWidth(ctx, text, o) / 2;
         label(ctx, text, Math.min(w - 8 - half, Math.max(8 + half, lx)), by + age * 120, { ...o, align: "center" });
       } else label(ctx, text, x0 + side * age * 240, ly + size * 0.36 - age * 200, { ...o, align: side > 0 ? "left" : "right" });
     }
-    if (!below && trail[trail.length - 1].left === null) seg(ctx, lx + side * 10, ly, x0 - side * 10, ly, color, 1, { dash: [2, 5], alpha: 0.7 });
+    if (!newestUnder && trail[trail.length - 1].left === null) seg(ctx, lx + side * 10, ly, x0 - side * 10, ly, color, 1, { dash: [2, 5], alpha: 0.7 });
   };
 }

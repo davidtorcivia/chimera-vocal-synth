@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Glow } from "./render/vector.ts";
-import type { CanvasFrame } from "./useCanvas.ts";
+import { cssScale, type CanvasFrame } from "./useCanvas.ts";
 
 /**
  * Canvas for a vector-display screen: devicePixelRatio scaling (capped at 2), resize observer,
@@ -40,7 +40,7 @@ export function usePhosphor(draw: (f: CanvasFrame) => void, opts: { sigma?: numb
         ctx.globalAlpha = 1;
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cssScale(ctx, w, h);
         drawRef.current({ ctx, w, h, dpr, dt, now });
         glow.apply(canvas, ctx, dpr);
       }

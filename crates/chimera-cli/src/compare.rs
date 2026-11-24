@@ -46,6 +46,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod score;
+pub mod tsp;
 
 /// A gap between notes longer than this (s) ends a phrase: the synth stops and breathes.
 const PHRASE_GAP: f64 = 0.08;
@@ -203,6 +204,7 @@ fn load_notes(path: &str) -> Result<Vec<Note>, String> {
                 melisma: None,
                 word_end: true,
                 phrase_end: false,
+                ..Default::default()
             },
             phrase_start: false,
             prev_end: f64::NEG_INFINITY,
@@ -289,6 +291,7 @@ fn render_notes(notes: &[Note], body_name: &str, seconds: f64) -> Result<Render,
                 bpm: 60.0,
                 t0: notes[i].start,
                 vibrato: VIBRATO_CENTS,
+                ..Default::default()
             },
         );
         v.schedule(&plan.gestures);
@@ -1287,6 +1290,7 @@ mod tests {
                 melisma: None,
                 word_end: true,
                 phrase_end: true,
+                ..Default::default()
             },
             phrase_start: true,
             prev_end: f64::NEG_INFINITY,

@@ -9,6 +9,15 @@ export interface CanvasFrame {
   now: number;
 }
 
+/**
+ * Scale a context so one unit is one CSS pixel of its canvas, w x h. The backing store is rounded
+ * to whole pixels, so the ratio is the store's to the box, not devicePixelRatio: a box 54.5 px tall
+ * gets a 55 px store, and drawing at dpr shrank everything 1% (an 11 px label showed at 10.9).
+ */
+export function cssScale(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.setTransform(ctx.canvas.width / w, 0, 0, ctx.canvas.height / h, 0, 0);
+}
+
 /** Canvas with devicePixelRatio scaling, resize observer and a rAF draw loop (ctx pre-scaled to css px). */
 export function useCanvasLoop(draw: (f: CanvasFrame) => void) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -33,7 +42,7 @@ export function useCanvasLoop(draw: (f: CanvasFrame) => void) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (w > 0 && h > 0) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cssScale(ctx, w, h);
         drawRef.current({ ctx, w, h, dpr, dt, now });
       }
       raf = requestAnimationFrame(loop);
@@ -45,10 +54,4 @@ export function useCanvasLoop(draw: (f: CanvasFrame) => void) {
     };
   }, []);
   return ref;
-}
-
-/** Canvas font in the Hershey stack (heavier weights map to its medium cut; IPA falls back to Archivo). */
-export function font(size: number, weight = 450, width = 100): string {
-  void width;
-  return `${weight >= 550 ? 500 : 300} ${size}px "Hershey", "Archivo", system-ui, sans-serif`;
 }

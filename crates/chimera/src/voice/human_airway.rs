@@ -6,8 +6,33 @@
 
 use crate::airway::network::{AirwayNetwork, Area, NoiseSpec, PortSpec, Tube, TubeSpec};
 use crate::anatomy::human::{HumanArtic, HumanBody, HumanFrame, HumanVocalTract};
-use crate::math::{js_max, js_min, js_round, smoothstep as smooth, sqrt};
-use crate::physics::{C_SOUND, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
+use crate::math::{PI, exp, js_max, js_min, js_round, smoothstep as smooth, sqrt};
+use crate::physics::{C_SOUND, CM_H2O, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
+
+/// The teeth source's band tops out at f = St·u/δ, the jet's speed and eddy size where it meets the
+/// teeth. St is of order 1 for a near-circular jet such as /s/ or /ʃ/ (Krane 2005, JASA 118, eq. 13),
+/// and 1.0 is that, with no fitted factor. The real speakers' /s/ and /ʃ/ (TSP) start to fall at 0.8-1.0
+/// of this model's v/D (hill-climb log, experiments 21, 30 and 32).
+const TEETH_STROUHAL: f64 = 1.0;
+/// Lower-airway resistance, male (cmH₂O per L/s): what air flowing out of the lungs loses below the
+/// modelled trachea. Plethysmography gives 1.3-1.5 from the mouth to the alveoli (DuBois 1956, Fisher
+/// 1968), 1.40 in eight young men (Juntendo 1980); about 1/3-1/2 of it is above the mid-trachea (Ferris
+/// 1964 and others), in what the tract already models, and the rest is linear up to 2 L/s (Ferris
+/// 1964). A woman's 1.87 in the same study is 1.34 times his, about 1/k³ (0.9 → 1.37): Poiseuille's
+/// ℓ/r⁴, as resistance goes with 1/lung volume (hill-climb log, experiment 30).
+const LOWER_AIRWAY_R: f64 = 0.8;
+/// The gas's inertance in the bronchial tree below the trachea, male (g/cm⁴): ρ·Σℓ/A over Weibel's model
+/// A is about 4.6 /cm. Body scale k: 1/k, as ℓ/A.
+const LOWER_AIRWAY_L: f64 = 5.2e-3;
+/// A turbulent mixing layer grows about as δ ≈ 0.17·x (textbook range, Pope 2000, ch. 5), so δ
+/// reaches the jet's diameter about 6 D downstream, where a round jet's core ends.
+const JET_SPREAD: f64 = 0.17;
+/// The narrowest point's frication fades in below this area (cm², at body scale 1, scaled by
+/// scale²) and is full below 0.35 of it.
+pub const FRICATION_FADE_AREA: f64 = 0.9;
+/// The band the teeth source's Re² gain was levelled on (Hz).
+const TEETH_LEVEL_HZ: f64 = 5000.0;
+const TEETH_HIGHPASS_HZ: f64 = 1200.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct NoiseGains {
@@ -66,6 +91,13 @@ pub struct HumanAirway {
     pub nasal: Tube,
     pub fossa: Tube,
     pub lungs: usize,
+    pub lung_port: usize,
+    /// what the lung port's resistance has over the lower airways' (dyn·s/cm⁵)
+    pub lung_port_excess: f64,
+    /// one-pole coefficient per internal sample at the corner where the lower airways' inertance
+    /// reaches that excess: below it the lungs see the lower airways' resistance, above it the
+    /// port's acoustic termination
+    pub lung_port_coef: f64,
     pub glottis_port: usize,
     pub velum_port: usize,
     pub rad_lips: usize,
@@ -80,6 +112,10 @@ pub struct HumanAirway {
     pub frame: Option<HumanFrame>,
     pub ph_len: f64,
     pub or_len: f64,
+    /// shortest section (cm) the airway's time step allows, at Courant number 0.97: a pharynx or
+    /// oral tube is never shorter than its node count times this. (The node counts are sized for
+    /// 0.93; the beatbox's raised larynx already reaches 0.954, stably, and stays as it was.)
+    pub dx_stable: f64,
     /// noise gains (tunable)
     pub noise_gain: NoiseGains,
     /// the aspiration band edge a gesture sets for now (NaN: `noise_gain.glottis_lowpass`)
@@ -98,6 +134,11 @@ pub struct HumanAirway {
     pub seal_hi: f64,
     /// below this area (cm²) the closing rate slows with √A, so the seal is reached smoothly
     pub seal_ease: f64,
+    /// Lips part from a point, so their gap and width grow together and the area starts slowly
+    /// (cm²/s at contact, reaching maxAreaRate by twice sealLo). Opened at the full rate from the
+    /// first sample, the flow's slope stepped up, the release's counterpart of the seal's click: a
+    /// /p/ read 6-10 dB over the speakers' below 500 Hz, its first millisecond the loudest.
+    pub lip_open_rate: f64,
     /// areas committed at the start of the current control step (slew-limit baseline)
     base: Option<[Vec<f64>; 4]>,
     base_dt: f64,
@@ -142,11 +183,19 @@ impl HumanAirway {
             })
             .collect();
         let nasal = net.add_tube(TubeSpec::new("nasal", n_na, na_len, Area::Profile(na_areas)).wall(Some(WALL_NASAL)).perimeter(3.2).viscous(2.5));
-        let fossa = net.add_tube(TubeSpec::new("piriform", 3, 2.0 * k, Area::Uniform(0.9 * k * k)).wall(Some(WALL_SOFT)).perimeter(1.3));
+        // three sections where they fit the time step: a child's 1.5 cm fossa in a 64 kHz airway
+        // (a 16 or 32 kHz device) had 0.49 cm sections, Courant number 1.09, and the voice rang 3x loud
+        let n_fo = js_max(1.0, js_min(3.0, (2.0 * k / dx_min).floor())) as usize;
+        let fossa = net.add_tube(TubeSpec::new("piriform", n_fo, 2.0 * k, Area::Uniform(0.9 * k * k)).wall(Some(WALL_SOFT)).perimeter(1.3));
 
         let lungs = net.add_pressure_node("lungs");
         let tr_a = 2.5 * k * k;
-        net.add_port(lungs, trachea.first_node(), PortSpec::new(tr_a, 1.0).kinetic(0.0, 0.0).resistance((0.5 * RHO * C_SOUND) / tr_a));
+        // half the trachea's characteristic impedance terminates its sound. That's a value for waves,
+        // not for the steady flow: at /ʃ/'s 0.5 L/s it took 4 of the lungs' 8 cmH₂O
+        let r_ac = (0.5 * RHO * C_SOUND) / tr_a;
+        let lung_port = net.add_port(lungs, trachea.first_node(), PortSpec::new(tr_a, 1.0).kinetic(0.0, 0.0).resistance(r_ac));
+        let lung_port_excess = r_ac - LOWER_AIRWAY_R * (CM_H2O / 1000.0) / (k * k * k);
+        let lung_port_coef = 1.0 - exp((-lung_port_excess * k / LOWER_AIRWAY_L) / fs);
         let glottis_port = net.add_port(trachea.last_node(), pharynx.first_node(), PortSpec::new(0.0, 0.3 * k).kinetic(0.37, 1.0).slit(1.4 * k));
         net.connect(pharynx.last_node(), oral.first_node());
         let velum_port = net.add_port(pharynx.last_node(), nasal.first_node(), PortSpec::new(0.0, 1.0 * k).kinetic(0.3, 0.8));
@@ -169,6 +218,9 @@ impl HumanAirway {
             nasal,
             fossa,
             lungs,
+            lung_port,
+            lung_port_excess,
+            lung_port_coef,
             glottis_port,
             velum_port,
             rad_lips,
@@ -183,13 +235,15 @@ impl HumanAirway {
             ph_len: 8.8,
             or_len: 8.3,
             asp_lowpass_now: f64::NAN,
-            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 2.2e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_offset2: 0.0, dorsal_split: 0.5, dorsal_area: 0.6, glottis_lowpass: 3500.0, constr_area: 0.9, dorsal_lowpass: 900.0, dorsal_steep: false, burst_lowpass: 0.0, burst_gain: 1.0, burst_time: 0.02, burst_gain_lab: 1.0, burst_gain_front: 1.0 },
+            noise_gain: NoiseGains { glottis: 3.2e-6, constriction: 1.364e-6, teeth: 3.0e-6, dorsal: 0.0, teeth_lowpass: 5000.0, dorsal_re: 1800.0, dorsal_offset: 1.6, dorsal_offset2: 0.0, dorsal_split: 0.5, dorsal_area: 0.6, glottis_lowpass: 3500.0, constr_area: 0.9, dorsal_lowpass: 900.0, dorsal_steep: false, burst_lowpass: 0.0, burst_gain: 1.0, burst_time: 0.02, burst_gain_lab: 1.0, burst_gain_front: 1.0 },
+            dx_stable: (C_SOUND / fs) / 0.97,
             max_area_rate: 45.0,
             area_rate_gain: 40.0,
             seal_rate: 5.0,
             seal_lo: 0.03,
             seal_hi: 0.4,
             seal_ease: 0.03,
+            lip_open_rate: 7.0,
             base: None,
             base_dt: 0.0,
             since_closed: 1.0,
@@ -263,11 +317,14 @@ impl HumanAirway {
                 };
                 seal_r + (open_r - seal_r) * u * u * (3.0 - 2.0 * u)
             };
-            let clamp_arr = |cur: &mut [f64], old: &[f64], mins: &mut [f64], old_mins: &[f64]| {
+            let lip_r = self.lip_open_rate * k2;
+            // opening rate of section i at area A: the sections ahead of the teeth are the lips'
+            let open_rate = |i: usize, lips_from: usize, area: f64| -> f64 { if i < lips_from { open_r } else { lip_r + (open_r - lip_r) * smooth(lo, 2.0 * lo, area) } };
+            let clamp_arr = |cur: &mut [f64], old: &[f64], mins: &mut [f64], old_mins: &[f64], lips_from: usize| {
                 for i in 0..cur.len() {
                     let d = cur[i] - old[i];
                     if d > 0.0 {
-                        let lim = (open_r + gain * cur[i]) * dt;
+                        let lim = (open_rate(i, lips_from, old[i]) + gain * cur[i]) * dt;
                         if d > lim {
                             cur[i] = old[i] + lim;
                         }
@@ -279,7 +336,7 @@ impl HumanAirway {
                     }
                     let dm = mins[i] - old_mins[i];
                     if dm > 0.0 {
-                        let lim_m = (open_r + gain * mins[i]) * dt;
+                        let lim_m = (open_rate(i, lips_from, old_mins[i]) + gain * mins[i]) * dt;
                         if dm > lim_m {
                             mins[i] = old_mins[i] + lim_m;
                         }
@@ -297,13 +354,22 @@ impl HumanAirway {
                     }
                 }
             };
-            clamp_arr(&mut self.ph_areas, &base[0], &mut self.ph_min, &base[2]);
-            clamp_arr(&mut self.or_areas, &base[1], &mut self.or_min, &base[3]);
+            clamp_arr(&mut self.ph_areas, &base[0], &mut self.ph_min, &base[2], usize::MAX);
+            let lips_from = (self.or_areas.len() as f64 * (1.0 - (f.lip_s - f.teeth_s) / or_len)) as usize;
+            clamp_arr(&mut self.or_areas, &base[1], &mut self.or_min, &base[3], lips_from);
         }
+        // A pose past the expected extremes (the tongue pressed into the floor of the mouth moves
+        // the pharynx/oral split forward: issue #50, a 5.3 cm oral tube) made sections shorter than
+        // one time step allows: Courant number 1.24, a self-oscillating airway that squealed at the
+        // limiter with the voice off. Such a tube is stretched instead; poses in range are unchanged.
+        // Only the network gets the stretch: ph_len/or_len stay anatomical, since the noise sources
+        // (against the teeth) and the UI's overlays map sections to places in the head with them.
         self.ph_len = ph_len;
         self.or_len = or_len;
-        self.net.set_tube_targets(self.pharynx, &self.ph_areas, Some(ph_len), Some(&self.ph_min));
-        self.net.set_tube_targets(self.oral, &self.or_areas, Some(or_len), Some(&self.or_min));
+        let ph_sim = js_max(ph_len, self.n_ph as f64 * self.dx_stable);
+        let or_sim = js_max(or_len, self.n_or as f64 * self.dx_stable);
+        self.net.set_tube_targets(self.pharynx, &self.ph_areas, Some(ph_sim), Some(&self.ph_min));
+        self.net.set_tube_targets(self.oral, &self.or_areas, Some(or_sim), Some(&self.or_min));
         self.net.set_port_target(self.velum_port, f.velum_port);
         self.update_noise(&f);
         self.frame = Some(f);
@@ -336,21 +402,19 @@ impl HumanAirway {
         // of geometry so sources fade in/out instead of toggling (toggling = audible noise bursts).
         let k2 = self.body.scale * self.body.scale;
         // (0.35, 0.9) exactly at the default, so English renders stay bit-identical
-        let (c_lo, c_hi) = if g.constr_area == 0.9 { (0.35, 0.9) } else { (0.35 / 0.9 * g.constr_area, g.constr_area) };
+        let (c_lo, c_hi) = if g.constr_area == 0.9 { (0.35, FRICATION_FADE_AREA) } else { (0.35 / FRICATION_FADE_AREA * g.constr_area, g.constr_area) };
         let w_area = if min_i >= 0 { 1.0 - smooth(c_lo * k2, c_hi * k2, min_a) } else { 0.0 };
         if w_area > 0.0 {
             let n_ph_i = n_ph as isize;
             let n_tot = (n_ph + n_or) as isize;
             let dx_ph = self.ph_len / n_ph as f64;
             let dx_or = self.or_len / n_or as f64;
-            // gi == n_ph is the pharynx/mouth junction, which has no branch of its own: a position that
-            // lands on it moves to the nearer side's end (it used to drop the source, which silenced
-            // the frication of any constriction just past the junction: the uvular [χ ʁ])
+            // global index n_ph is the oral tube's first section (the pharynx's last node is joined
+            // to the oral tube's first): mapping it to no branch dropped the source whenever the
+            // narrowest point, or its reach, landed just past the velum (#124)
             let to_branch = |gi: isize| -> isize {
                 if gi < n_ph_i {
                     self.branch_of(self.pharynx, gi) as isize
-                } else if gi == n_ph_i {
-                    self.branch_of(self.pharynx, n_ph_i - 1) as isize
                 } else {
                     self.branch_of(self.oral, gi - n_ph_i) as isize
                 }
@@ -379,7 +443,9 @@ impl HumanAirway {
                 // obstacle source: a narrow anterior jet impinging on the incisors (sibilants)
                 let s_min = if min_i < n_ph_i { (min_i as f64 + 0.5) * dx_ph } else { self.ph_len + ((min_i - n_ph_i) as f64 + 0.5) * dx_or };
                 let behind = (f.teeth_s - s_min) / self.body.scale;
-                let w_dist = smooth(0.15, 0.5, behind) * (1.0 - smooth(2.6, 4.0, behind));
+                // a jet that leaves its channel at the teeth doesn't strike them: /θ/'s narrowest section
+                // sits 0.7-0.9 cm behind them, /s/'s 1.8-1.9 (hill-climb log, experiment 30)
+                let w_dist = smooth(1.0, 1.5, behind) * (1.0 - smooth(2.6, 4.0, behind));
                 let w_jet = 1.0 - smooth(0.2 * k2, 0.5 * k2, min_a);
                 let wt = w_dist * w_jet;
                 // dorsal obstacle source: a narrow jet well behind the teeth (velar/uvular place)
@@ -410,7 +476,23 @@ impl HumanAirway {
                     let teeth_i = n_ph_i + js_min((n_or - 2) as f64, js_max(0.0, js_round((f.teeth_s - self.ph_len) / dx_or))) as isize;
                     let tb = to_branch(teeth_i);
                     if tb >= 0 {
-                        list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt).band(g.teeth_lowpass, 1200.0));
+                        if g.teeth_lowpass != 5000.0 {
+                            // a fixed band set by a front end (PIE's sibilant_lowpass when not the default)
+                            list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt).band(g.teeth_lowpass, 1200.0));
+                        } else {
+                            // the band follows the jet as it reaches the teeth: within its core the jet's
+                            // own speed and diameter; past it a wider eddy, slowed as v·D/δ. So /s/ reaches
+                            // higher than /ʃ/, and a stop's narrow first opening is no brighter than the
+                            // channel it opens into. The Re² law sets the source's power, so a wider band
+                            // spreads it thinner.
+                            let a_jet = js_max(self.net.branch_area[src as usize], 1e-6);
+                            let v_jet = self.net.u[src as usize].abs() / a_jet;
+                            let d_jet = 2.0 * sqrt(a_jet / PI);
+                            let eddy = js_max(d_jet, JET_SPREAD * (f.teeth_s - s_min));
+                            let top = TEETH_STROUHAL * (v_jet * d_jet / (eddy * eddy));
+                            let spread = sqrt(TEETH_LEVEL_HZ / js_max(top, TEETH_HIGHPASS_HZ));
+                            list.push(NoiseSpec::new(src as usize, tb as usize, bwd as usize, g.teeth * wt * spread).band(top, TEETH_HIGHPASS_HZ));
+                        }
                     }
                 }
             }

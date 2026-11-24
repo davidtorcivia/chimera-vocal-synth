@@ -5,13 +5,28 @@
  *
  * Beams are drawn additively ("lighter"), so where lines cross they get brighter, like a beam.
  */
-import { V, core } from "../colors.ts";
+import { TEXT, V, core } from "../colors.ts";
 
 export type Pt = [number, number];
 
 /** Hershey Simplex first; anything it lacks (IPA, ², ×) falls back to Archivo, which covers IPA. */
 export const HERSHEY = '"Hershey", "Archivo", system-ui, sans-serif';
-export const hfont = (size: number, weight: "l" | "m" = "l") => `${weight === "m" ? 500 : 300} ${size}px ${HERSHEY}`;
+/**
+ * Canvas font. Hershey Light is a hairline at label sizes, so it is used only for display sizes
+ * (20 px and up); smaller text is always Medium.
+ */
+const LIGHT_MIN = 20;
+export const hfont = (size: number, weight: "l" | "m" = "l") => `${weight === "m" || size < LIGHT_MIN ? 500 : 300} ${size}px ${HERSHEY}`;
+
+/** the smallest canvas text, matching the 11 px floor in styles.css (tools/layout-lint.ts checks it) */
+export const LABEL_MIN = 11;
+/** label sizes: what callers ask for, floored at LABEL_MIN */
+const labelSize = (o: LabelOpts) => Math.max(o.size ?? LABEL_MIN, LABEL_MIN);
+/** tracking: tight on small caps (wide gaps split single-stroke letters into loose strokes) */
+const labelTracking = (o: LabelOpts, size: number) => Math.min(o.ls ?? 0.06, size < LIGHT_MIN ? 0.1 : Infinity) * size;
+/** line colours are never text colours */
+const LINE_COLOURS: ReadonlySet<string> = new Set([V.blueDim, V.blueMid, V.frame]);
+const labelColour = (o: LabelOpts) => (o.color && LINE_COLOURS.has(o.color) ? TEXT.label : o.color ?? V.blue);
 
 const hasLetterSpacing = typeof CanvasRenderingContext2D !== "undefined" && "letterSpacing" in CanvasRenderingContext2D.prototype;
 
@@ -117,17 +132,27 @@ export interface LabelOpts {
   moving?: boolean;
 }
 
-/** Hershey text (pass capitals for chrome-style labels) */
+/**
+ * Hershey text (pass capitals for chrome-style labels). Every label is readable whatever the
+ * caller asks: at least LABEL_MIN, Medium below display sizes, tight tracking, never in a line
+ * colour, on a black halo so traces never cut it. Dim text by colour (TEXT.label, TEXT.quiet);
+ * alpha is for text fading in or out.
+ */
 export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, o: LabelOpts = {}): void {
-  const size = o.size ?? 11;
+  const size = labelSize(o);
   ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = o.alpha ?? 1;
   ctx.font = hfont(size, o.weight);
-  if (hasLetterSpacing) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${((o.ls ?? 0.14) * size).toFixed(2)}px`;
+  if (hasLetterSpacing) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${labelTracking(o, size).toFixed(2)}px`;
   ctx.textAlign = o.align ?? "left";
   ctx.textBaseline = o.baseline ?? "alphabetic";
-  ctx.fillStyle = o.color ?? V.blue;
+  ctx.globalAlpha = o.alpha ?? 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = Math.min(4, Math.max(3, size * 0.22)); // a thin outline, not a hole cut in the drawing
+  ctx.lineJoin = "round";
+  ctx.strokeText(text, x, y);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = labelColour(o);
   const c = ctx as CanvasRenderingContext2D & { layoutMoving?: boolean };
   if (o.moving) c.layoutMoving = true;
   ctx.fillText(text, x, y);
@@ -137,10 +162,10 @@ export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y:
 
 /** Width of a label as label() would draw it (same font and letter spacing). */
 export function labelWidth(ctx: CanvasRenderingContext2D, text: string, o: LabelOpts = {}): number {
-  const size = o.size ?? 11;
+  const size = labelSize(o);
   ctx.save();
   ctx.font = hfont(size, o.weight);
-  if (hasLetterSpacing) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${((o.ls ?? 0.14) * size).toFixed(2)}px`;
+  if (hasLetterSpacing) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${labelTracking(o, size).toFixed(2)}px`;
   const wd = ctx.measureText(text).width;
   ctx.restore();
   return wd;
@@ -158,14 +183,14 @@ export function wrapLabel(ctx: CanvasRenderingContext2D, text: string, maxW: num
 }
 
 /** line height of labelBlock() */
-export const blockLineH = (size = 11) => size * 1.6;
+export const blockLineH = (size = LABEL_MIN) => Math.max(size, LABEL_MIN) * 1.6;
 
 /**
  * A message wrapped to maxW with its lines centred on y (placeholders like "start audio to see
  * them vibrate"), so it never runs off a narrow screen.
  */
 export function labelBlock(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, o: LabelOpts = {}): void {
-  const size = o.size ?? 11;
+  const size = labelSize(o);
   const lines = wrapLabel(ctx, text, maxW, o);
   const lh = blockLineH(size);
   const y0 = y - ((lines.length - 1) * lh) / 2 + size * 0.35;

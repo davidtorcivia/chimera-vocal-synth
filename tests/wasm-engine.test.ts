@@ -3,12 +3,13 @@
  * for bit) on the voice scenarios, driven through the gesture-record codec the worklet uses.
  * Needs `bun run wasm` (the wasm build) and cargo (it renders the native reference).
  */
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 import { readFileSync, existsSync } from "node:fs";
-import { writeGestures, CONTROL_KEYS, GESTURE_RECORD } from "../src/wasm/wire.ts";
+import { writeGestures, writeSteps, CONTROL_KEYS, GESTURE_RECORD, MAX_BEAT_STEPS } from "../src/wasm/wire.ts";
 import type { Gesture } from "../src/wasm/types.ts";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WASM = `${ROOT}target/wasm32-unknown-unknown/release/chimera_wasm.wasm`;
 const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
 
@@ -88,5 +89,30 @@ describe("wasm engine", () => {
   test("gesture records are 288 bytes", () => {
     expect(GESTURE_RECORD).toBe(288);
     expect(CONTROL_KEYS.length).toBe(24);
+  });
+
+  // #100: the worklet's path for a long beat (writeSteps → engine_set_beat) played only the first
+  // 128 steps, then looped, and the tempo stopped at 200 bpm
+  test.skipIf(!existsSync(WASM))("a 256-step beat plays to its last step at 240 bpm", () => {
+    const x = instance();
+    const fn = (name: string) => x[name] as F;
+    const fs = 16000;
+    const h = fn("engine_new")(fs);
+    const steps = Array.from({ length: 300 }, (_, i) => ({ id: ["B", "t", "Pf", "t"][i % 4] }));
+    const n = writeSteps(x.memory.buffer, fn("engine_records")(h), steps);
+    expect(n).toBe(MAX_BEAT_STEPS);
+    fn("engine_set_beat")(h, 1, n, 240, 0, 1);
+    let last = -1, top = -1, firstAt = -1, loopedAt = -1;
+    for (let i = 0; i < 17 * fs && loopedAt < 0; i += 128) {
+      fn("engine_render")(h, 128);
+      const s = fn("engine_beat_step")(h);
+      if (s === 0 && firstAt < 0) firstAt = i / fs;
+      if (s >= 0 && s < last) loopedAt = i / fs;
+      top = Math.max(top, s);
+      last = s;
+    }
+    expect(top).toBe(MAX_BEAT_STEPS - 1);
+    // 256 sixteenths at 240 bpm: 16 s
+    expect(loopedAt - firstAt).toBeCloseTo(16, 1);
   });
 });

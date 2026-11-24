@@ -46,7 +46,16 @@ fn default_brightness() -> f64 {
     DEFAULT_SOURCE.brightness
 }
 
-pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
+/// `pressure` 7.2 holds what the folds read in vowels, 7.1-7.2 cmH₂O, once the lungs' port stopped taking
+/// its 0.8 (hill-climb log, experiment 30).
+pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 7.2, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
+
+/// Vocal effort from the lung pressure (cmH₂O). The folds read 0.8 less than the lungs while the
+/// lungs' port took its share, so `(lungs − 3)/10` was this law on the same folds' pressure. The port's fix
+/// moves neither the folds' pressure nor their effort (hill-climb log, experiment 32).
+fn effort_at(pressure: f64) -> f64 {
+    clamp((pressure.abs() - 2.2) / 10.0, 0.0, 1.0)
+}
 
 /// `Partial<VoiceSource>`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -116,6 +125,14 @@ impl SourcePatch {
 pub const SCOPE_POINTS: usize = 256;
 const SCOPE_LEN: usize = 4096;
 
+/// Scalars at the head of the flat telemetry block, in order: phLen, orLen, velumPort, f0, voicing,
+/// pLung, outRms, noiseLevel, noiseNode, gate, clock, then the array lengths nArtic, nPh, nOr,
+/// nScope, nActive. The arrays follow: artic, phAreas, orAreas, pressureRms (nPh+nOr),
+/// flow (nPh+nOr), glottalArea (nScope), glottalFlow (nScope).
+pub const TELE_HEADER: usize = 16;
+/// Size of the active-label area: up to 4 × (length byte, 24 bytes).
+pub const TELE_LABELS: usize = 4 * 25;
+
 /// Fixed-size telemetry snapshot (~60 Hz) for visuals. Buffers are reused between snapshots.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,6 +160,43 @@ pub struct VoiceTelemetry {
     pub active: Vec<Label>,
 }
 
+impl VoiceTelemetry {
+    /// The snapshot as one flat block (see [`TELE_HEADER`]) and its active labels. Allocates only
+    /// if `block` lacks the capacity.
+    pub fn write_flat(&self, block: &mut Vec<f64>, labels: &mut [u8]) {
+        let t = self;
+        block.clear();
+        block.extend_from_slice(&[t.ph_len, t.or_len, t.velum_port, t.f0, t.voicing, t.p_lung, t.out_rms, t.noise_level, t.noise_node as f64, t.gate, t.clock]);
+        block.extend_from_slice(&[t.artic.len() as f64, t.ph_areas.len() as f64, t.or_areas.len() as f64, t.glottal_area.len() as f64, t.active.len() as f64]);
+        debug_assert_eq!(block.len(), TELE_HEADER);
+        for arr in [&t.artic, &t.ph_areas, &t.or_areas, &t.pressure_rms, &t.flow, &t.glottal_area, &t.glottal_flow] {
+            block.extend(arr.iter().map(|x| *x as f64));
+        }
+        for (i, l) in t.active.iter().enumerate() {
+            let bytes = l.as_bytes();
+            labels[i * 25] = bytes.len() as u8;
+            labels[i * 25 + 1..i * 25 + 1 + bytes.len()].copy_from_slice(bytes);
+        }
+    }
+
+    /// Room for every array at `n_tract` tube sections, so later snapshots of up to that size don't
+    /// allocate. `block` is the flat block for [`VoiceTelemetry::write_flat`].
+    pub fn reserve(&mut self, n_tract: usize, block: &mut Vec<f64>) {
+        fn room<T>(v: &mut Vec<T>, n: usize) {
+            v.reserve(n.saturating_sub(v.len()));
+        }
+        room(&mut self.artic, N_ARTIC);
+        room(&mut self.ph_areas, n_tract);
+        room(&mut self.or_areas, n_tract);
+        room(&mut self.pressure_rms, n_tract);
+        room(&mut self.flow, n_tract);
+        room(&mut self.glottal_area, SCOPE_POINTS);
+        room(&mut self.glottal_flow, SCOPE_POINTS);
+        room(&mut self.active, 4);
+        room(block, TELE_HEADER + N_ARTIC + 4 * n_tract + 2 * SCOPE_POINTS);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HumanVoice {
     pub fs_out: f64,
@@ -165,6 +219,8 @@ pub struct HumanVoice {
     /// lung pressure applied this sample, ramped toward `p_lung` across the control block
     p_lung_now: f64,
     p_lung_step: f64,
+    /// the lung port's flow below its corner (cm³/s)
+    lung_flow: f64,
     f0: f64,
     pub output_gain: f64,
     dc_x: f64,
@@ -205,6 +261,17 @@ pub struct HumanVoice {
     lim_release: f64,
     /// tissue may compress this far (cm) before the palate stops the articulator
     pub max_penetration: f64,
+    /// pitch bend (ratio), on top of whatever sets the pitch
+    pub bend: f64,
+}
+
+/// How many times the airway is oversampled at this output rate: the smallest factor that puts
+/// the simulation above 60 kHz (2× at 44.1 and 48 kHz, 1× at 88.2 and 96 kHz). The tubes keep a
+/// minimum section count, so a lower simulation rate makes the sections shorter than one step of
+/// sound and the airway blows up: at 2× a 16 kHz output (a Bluetooth headset's) went NaN within a
+/// second, and 24 kHz ran at the limiter ceiling (issue #33).
+pub fn oversample_for(fs_out: f64) -> usize {
+    js_max(1.0, (60000.0 / fs_out).floor() + 1.0) as usize
 }
 
 impl HumanVoice {
@@ -235,6 +302,7 @@ impl HumanVoice {
             p_lung: 0.0,
             p_lung_now: 0.0,
             p_lung_step: 0.0,
+            lung_flow: 0.0,
             f0: DEFAULT_SOURCE.f0,
             output_gain: 5.5e-7,
             dc_x: 0.0,
@@ -269,27 +337,29 @@ impl HumanVoice {
             lim_hold_n: crate::math::js_round(0.025 * fs_out) as i64,
             lim_release: exp(-1.0 / (0.2 * fs_out)),
             max_penetration: 0.1,
+            bend: 1.0,
         };
         let x = v.artic.x;
         v.airway.apply(&x, 0.0);
         v.airway.net.snap_to_targets();
-        // smaller bodies radiate more high-frequency (derivative) energy at their higher f0
-        // (a ramp from the adult female's scale up to the adult male's, so blended bodies have no step)
+        // a level match: at their higher f0 smaller bodies radiate more for the same flow, since the
+        // output is the flow's derivative (a ramp from the adult female's scale up to the adult
+        // male's, so blended bodies have no step)
         let sc = v.airway.body.scale;
         v.output_gain *= if sc >= 1.0 {
             1.0
         } else if sc <= 0.9 {
-            0.55
+            0.875
         } else {
-            0.55 + 0.45 * (sc - 0.9) / 0.1
+            0.875 + 0.125 * (sc - 0.9) / 0.1
         };
         v.apply_source();
         v
     }
 
-    /// The defaults the browser uses: male body, 2× oversampling below 60 kHz.
+    /// The defaults the browser uses: male body, oversampled by [`oversample_for`].
     pub fn with_defaults(fs_out: f64) -> Self {
-        Self::new(fs_out, BODY_MALE, if fs_out > 60000.0 { 1 } else { 2 })
+        Self::new(fs_out, BODY_MALE, oversample_for(fs_out))
     }
 
     pub fn set_articulation(&mut self, values: &ArticPatch, tip_free: Option<bool>) {
@@ -328,7 +398,9 @@ impl HumanVoice {
         let s = self.source;
         let g = &mut self.glottis.params;
         let k2 = self.airway.body.scale * self.airway.body.scale;
-        g.amplitude = 0.17 * k2 * (if s.voiced { 1.0 } else { 0.0 });
+        // the pulse's peak area is the vibrating fold's length by how far its edge swings
+        let body = self.airway.body;
+        g.amplitude = 0.17 * body.fold_length * body.scale * (if s.voiced { 1.0 } else { 0.0 });
         g.abduction = (if s.voiced { 0.1 * s.breathiness * s.breathiness } else { 0.2 + 0.1 * s.breathiness }) * k2;
         self.base_abduction = g.abduction;
         self.base_closure = 0.0;
@@ -336,7 +408,10 @@ impl HumanVoice {
         // the arytenoids through the closed phase (Södersten & Lindestad 1990). It leaks a little
         // air and damps the tract, which lifts H1 and the band below 500 Hz.
         g.chink = (0.008 + 0.03 * s.breathiness) * k2;
-        g.open_quotient = 0.78 - 0.36 * s.tension;
+        g.open_quotient = 0.78 - 0.36 * s.tension + body.open_phase;
+        // Zhang 2016 (JASA 139, 1493, table II): closed quotient −0.0247 per degree of resting angle, in a 3D
+        // model whose 0-4° open 0-10.1 mm². It's secondary there to the folds' thickness (hill-climb log, experiment 32)
+        g.open_with_abduction = 0.98;
         // The folds close along their length and depth over a return phase, not all at once, so
         // a sung or spoken voice closes softly (0.22 at tension 0.55): an abrupt closure put
         // 3-8 dB too much energy above 2 kHz. Pressing harder than that brings the abrupt closure
@@ -359,13 +434,14 @@ impl HumanVoice {
         g.vibrato_depth = s.vibrato_depth;
         g.vibrato_rate = s.vibrato_rate;
         g.drift = s.drift;
-        g.effort = clamp((s.pressure.abs() - 3.0) / 10.0, 0.0, 1.0);
+        g.effort = effort_at(s.pressure);
     }
 
     /// Render `out.len()` output samples.
     pub fn render(&mut self, out: &mut [f32]) {
         let m = self.m;
         let lungs = self.airway.lungs;
+        let (lung_port, lung_excess, lung_coef) = (self.airway.lung_port, self.airway.lung_port_excess, self.airway.lung_port_coef);
         let sub_node = self.airway.trachea.last_node();
         let supra = self.airway.pharynx.first_node();
         let gp = self.airway.glottis_port;
@@ -381,7 +457,10 @@ impl HumanVoice {
                 self.ctrl_counter -= 1;
                 let net = &mut self.airway.net;
                 self.p_lung_now += self.p_lung_step;
-                net.set_fixed_pressure(lungs, self.p_lung_now);
+                // the port's resistance is for sound: below its corner the lungs give back what it
+                // takes beyond the lower airways' own, a passive R_dc + R·s/(s + ωc)
+                self.lung_flow += lung_coef * (net.u[lung_port] - self.lung_flow);
+                net.set_fixed_pressure(lungs, self.p_lung_now + lung_excess * self.lung_flow);
                 let a = self.glottis.next(net.p[sub_node] - net.p[supra]);
                 net.set_port_area(gp, a);
                 let y = net.step();
@@ -533,14 +612,25 @@ impl HumanVoice {
             0.07
         };
         self.gate += (gate_goal - self.gate) * (1.0 - exp(-dt / tau));
+        // a breath let go decays toward zero for ever, and a denormal lung pressure makes denormals
+        // of the whole airway (see `AirwayNetwork::flush_tiny`): nothing is nothing
+        crate::airway::network::tiny(&mut self.gate);
+        self.glottis.flush_tiny();
+        crate::airway::network::tiny(&mut self.dc_x);
+        crate::airway::network::tiny(&mut self.dc_y);
+        crate::airway::network::tiny(&mut self.lim_env);
+        crate::airway::network::tiny(&mut self.lung_flow);
         self.p_lung = self.source.pressure * CM_H2O * self.gate;
+        if self.p_lung == 0.0 {
+            crate::airway::network::tiny(&mut self.p_lung_now);
+        }
         self.p_lung_step = (self.p_lung - self.p_lung_now) / self.ctrl_every as f64;
         // vocal effort follows the pressure actually applied: a harder breath (a louder sung note)
         // gives wider, sharper-closing pulses, as in real phonation, not just more flow
-        self.glottis.params.effort = clamp(((self.source.pressure * self.gate).abs() - 3.0) / 10.0, 0.0, 1.0);
+        self.glottis.params.effort = effort_at(self.source.pressure * self.gate);
         // pitch glide
         let g = js_max(0.002, if self.score_f0.is_some() { 0.03 } else { self.source.glide });
-        self.f0 *= pow(f0_target / self.f0, 1.0 - exp(-dt / g));
+        self.f0 *= pow(f0_target * self.bend / self.f0, 1.0 - exp(-dt / g));
         self.glottis.params.f0 = self.f0;
         // smoothed mean flow per tract node (for particle speeds)
         let a = 1.0 - exp(-dt / 0.03);
@@ -548,6 +638,7 @@ impl HumanVoice {
         for k in 0..n_ph + self.airway.n_or {
             let br = if k < n_ph { self.airway.branch_of(self.airway.pharynx, k as isize) } else { self.airway.branch_of(self.airway.oral, (k - n_ph) as isize) };
             self.flow_sm[k] += a * (self.airway.net.u[br] - self.flow_sm[k]);
+            crate::airway::network::tiny(&mut self.flow_sm[k]);
         }
     }
 
@@ -582,6 +673,15 @@ impl HumanVoice {
         fix(&mut self.artic, ct, ctn, ArticKey::TtX, ArticKey::TtY);
         fix(&mut self.artic, cb, cbn, ArticKey::TbX, ArticKey::TbY);
         changed
+    }
+
+    /// How many of the voice's decaying states are denormal numbers (for tests: none should be;
+    /// see `AirwayNetwork::flush_tiny`).
+    pub fn denormal_states(&self) -> usize {
+        use crate::airway::network::is_denormal;
+        let own = [self.gate, self.dc_x, self.dc_y, self.lim_env, self.p_lung_now, self.lung_flow];
+        let artic = ArticKey::ALL.iter().filter(|k| is_denormal(self.artic.x.get(**k))).count() + self.artic.v.iter().filter(|v| is_denormal(**v)).count();
+        self.airway.net.denormal_states() + self.glottis.denormal_states() + own.iter().filter(|x| is_denormal(**x)).count() + self.flow_sm.iter().filter(|x| is_denormal(**x)).count() + artic
     }
 
     /// Fill a telemetry snapshot and reset the accumulators.

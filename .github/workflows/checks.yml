@@ -1,0 +1,60 @@
+name: checks
+
+# The checks AGENTS.md asks of every change, on every PR (forks included) and on main:
+# tests, typecheck, layout lint, and the browser e2e. The plugin has its own workflow (plugin.yml).
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Tests (cargo, then bun on the wasm build)
+        run: bun run test
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Headless Chromium for the lint and e2e
+        run: bunx playwright-core install --with-deps chromium
+
+      - name: Layout lint
+        run: bun run lint:layout
+
+      - name: Build, then the browser e2e against the preview
+        run: |
+          bun run build
+          ./node_modules/.bin/vite preview --host 127.0.0.1 --port 4173 --strictPort &
+          for i in $(seq 30); do curl -sf http://127.0.0.1:4173/ > /dev/null && break; sleep 1; done
+          bun tools/e2e.ts http://127.0.0.1:4173/ out/e2e
+
+      # screenshots and reports, to see what failed
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: checks-out
+          path: out/
+          if-no-files-found: ignore

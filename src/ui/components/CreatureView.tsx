@@ -4,8 +4,8 @@ import { useStore } from "../store.ts";
 import { creatureById } from "../../wasm/engine.ts";
 import type { CreatureDef } from "../../wasm/types.ts";
 import { liveTelemetry, previewTelemetry } from "../creatureLive.ts";
-import { V, SLOTS, heat, pressureLevel } from "../colors.ts";
-import { beamPts, dot, hfont, label, labelWidth, ring, seg, wrapLabel, type Pt } from "../render/vector.ts";
+import { TEXT, V, SLOTS, heat, pressureLevel } from "../colors.ts";
+import { beamPts, dot, hfont, label, LABEL_MIN, labelWidth, ring, seg, wrapLabel, type Pt } from "../render/vector.ts";
 
 type P = [number, number];
 
@@ -100,7 +100,11 @@ export function CreatureView() {
     const tele = live ?? previewTelemetry(def, st.cparams[def.id]);
     // a narrow screen (a phone) stacks the title and status, and puts the readouts two by two
     const compact = w < 560;
-    const top = compact ? 96 : 64, slotH = compact ? 132 : Math.min(118, h * 0.2);
+    // what the animal is, under its name (its place in the right column went to the calls)
+    const blurbO = { size: LABEL_MIN, color: TEXT.secondary, ls: 0.08 };
+    const blurb = wrapLabel(ctx, def.blurb, Math.min(w - 36, 460), blurbO);
+    const blurbY = compact ? 90 : 76, blurbH = blurb.length * 15;
+    const top = (compact ? 96 : 64) + blurbH, slotH = compact ? 132 : Math.min(118, h * 0.2);
     const vw = vis.view.x1 - vis.view.x0, vh = vis.view.y1 - vis.view.y0;
     const sc = Math.min((w * 0.86) / vw, ((h - top - slotH) * 0.9) / vh);
     const ox = w / 2 - ((vis.view.x0 + vis.view.x1) / 2) * sc;
@@ -141,7 +145,7 @@ export function CreatureView() {
       }
       if (tg.label && tg.inView) {
         const m = S(pointAt(tg, tg.length * 0.5));
-        labels.push({ text: tg.label.toUpperCase(), x: m[0] + 12, y: m[1] - 12, color: V.blueMid });
+        labels.push({ text: tg.label.toUpperCase(), x: m[0] + 12, y: m[1] - 12, color: TEXT.secondary });
       }
     }
 
@@ -170,7 +174,7 @@ export function CreatureView() {
 
     if (st.view.calipers) {
       // place labels, nudging down past any earlier label they would overlap
-      ctx.font = hfont(10);
+      ctx.font = hfont(LABEL_MIN);
       const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
       for (const l of labels) {
         const tw = ctx.measureText(l.text).width + l.text.length * 1.5;
@@ -182,20 +186,21 @@ export function CreatureView() {
           y = hit.y1 + 12;
         }
         placed.push({ x0: x, x1: x + tw, y0: y - 11, y1: y + 2 });
-        label(ctx, l.text, x, y, { size: 10, color: l.color, ls: 0.15 });
+        label(ctx, l.text, x, y, { size: LABEL_MIN, color: l.color, ls: 0.15 });
       }
     }
 
     // like a map's title: the name, the latin name, and what it is doing
-    label(ctx, fit(ctx, def.name.toUpperCase(), w - 32, compact ? 18 : 24, 0.18), 16, compact ? 30 : 34, { size: compact ? 18 : 24, color: V.blue, ls: 0.18 });
-    label(ctx, fit(ctx, def.latin.toUpperCase(), w - 34, 10, 0.16), 18, compact ? 48 : 54, { size: 10, color: V.blueMid, ls: 0.16 });
+    label(ctx, fit(ctx, def.name.toUpperCase(), w - 32, compact ? 18 : 24, 0.18), 16, compact ? 30 : 34, { size: compact ? 18 : 24, color: TEXT.primary, ls: 0.18 });
+    label(ctx, fit(ctx, def.latin.toUpperCase(), w - 34, 10, 0.16), 18, compact ? 48 : 54, { size: LABEL_MIN, color: TEXT.secondary, ls: 0.16 });
+    blurb.forEach((line, i) => label(ctx, line, 18, blurbY + i * 15, blurbO));
     const state = live ? (live.call ? (def.calls.find((c) => c.id === live.call)?.name ?? live.call) : live.gate > 0.05 ? "Sustaining" : "At rest") : "Not started";
     const pitchText = pp ? (() => { const f = fmtParam(pitch, pp); return `${f.value} ${f.unit}`.trim().toUpperCase(); })() : "";
     if (compact) {
       label(ctx, `${state.toUpperCase()}${pitchText ? "   " + pitchText : ""}`, 18, 70, { size: 11, color: V.amber, ls: 0.14 });
     } else {
       label(ctx, state.toUpperCase(), w - 16, 30, { size: 13, color: V.amber, align: "right", ls: 0.16 });
-      if (pitchText) label(ctx, pitchText, w - 16, 50, { size: 11, color: V.amber, align: "right", ls: 0.12, alpha: 0.8 });
+      if (pitchText) label(ctx, pitchText, w - 16, 50, { size: 11, color: V.amber, align: "right", ls: 0.12 });
     }
     // a scale bar: 1 drawing unit (about a centimetre)
     const unit = vw > 60 ? 10 : 1;
@@ -203,7 +208,7 @@ export function CreatureView() {
     seg(ctx, 18, by, 18 + unit * sc, by, V.blueMid, 1.2);
     seg(ctx, 18, by - 4, 18, by + 4, V.blueMid, 1.2);
     seg(ctx, 18 + unit * sc, by - 4, 18 + unit * sc, by + 4, V.blueMid, 1.2);
-    label(ctx, `${unit} CM`, 26 + unit * sc, by + 3, { size: 9, color: V.blueMid, ls: 0.14 });
+    label(ctx, `${unit} CM`, 26 + unit * sc, by + 3, { size: LABEL_MIN, color: TEXT.secondary, ls: 0.14 });
 
     // the first four parameters, OP-1 style, across the bottom (the encoders on the right share the colours)
     const params = def.params.slice(0, 4);
@@ -215,7 +220,7 @@ export function CreatureView() {
       const cx = 16 + (i % perRow) * cw, cy = h - slotH + 12 + Math.floor(i / perRow) * rowH;
       dot(ctx, cx + 5, cy, 4, color);
       // a long name takes a second line above, where the first row of slots has room, before an ellipsis
-      const lo = { size: 10, color, ls: 0.16, alpha: 0.85 };
+      const lo = { size: LABEL_MIN, color, ls: 0.16 };
       const lines = wrapLabel(ctx, p.label.toUpperCase(), cw - 22, lo);
       if (lines.length > 1 && i < perRow) {
         label(ctx, lines[0], cx + 15, cy - 9, lo);
@@ -224,8 +229,8 @@ export function CreatureView() {
       const f = fmtParam(paramValue(p.key, p.default), p);
       label(ctx, f.value, cx, cy + 14 + big, { size: big, color, weight: "m", ls: 0.02 });
       // under the value, or beside it on a phone, where two rows of slots leave no room below
-      if (f.unit && compact) label(ctx, f.unit.toUpperCase(), cx + labelWidth(ctx, f.value, { size: big, weight: "m", ls: 0.02 }) + 6, cy + 14 + big, { size: 10, color, ls: 0.14, alpha: 0.7 });
-      else if (f.unit) label(ctx, f.unit.toUpperCase(), cx, cy + 32 + big, { size: 10, color, ls: 0.14, alpha: 0.7 });
+      if (f.unit && compact) label(ctx, f.unit.toUpperCase(), cx + labelWidth(ctx, f.value, { size: big, weight: "m", ls: 0.02 }) + 6, cy + 14 + big, { size: LABEL_MIN, color, ls: 0.14 });
+      else if (f.unit) label(ctx, f.unit.toUpperCase(), cx, cy + 32 + big, { size: LABEL_MIN, color, ls: 0.14 });
     });
   });
   return <canvas ref={ref} className="creature-canvas" aria-label="Creature airway: its outline, its airways lit by sound pressure, and its sound sources" role="img" />;

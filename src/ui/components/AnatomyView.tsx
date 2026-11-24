@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { recording } from "../../song/record.ts";
 import { AnatomyRenderer, type FaceView, type HandleId, type Slot } from "../render/anatomy.ts";
 import { Glow } from "../render/vector.ts";
 import { engine } from "../../audio/AudioEngine.ts";
@@ -6,6 +7,7 @@ import { sameBody } from "../body.ts";
 import { useStore } from "../store.ts";
 import { VoiceModel } from "../analysis.ts";
 import { useModel } from "../useModel.ts";
+import { cssScale } from "../useCanvas.ts";
 import { V } from "../colors.ts";
 import type { HumanArtic, HumanFrame } from "../../wasm/types.ts";
 import type { TelemetryMessage } from "../../worklet/protocol.ts";
@@ -102,12 +104,15 @@ export function AnatomyView(props: { slots?: SlotsFn; info?: InfoFn; showFormant
         const f = m.frame(a);
         if (++fTick % 4 === 0 || formants.length === 0) formants = m.transfer(a).formants;
         const info = infoRef.current(m, f, tele);
+        // recording a clip: the head without the measurements
+        const clean = recording.on;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        r.draw(ctx, m, f, a, tele, st.view, { hover: hoverRef.current, drag: dragRef.current?.id ?? null, dt, formants: formantsRef.current ? formants : [], slots: slotsRef.current(m, a, f, formants, tele), info: info.map((s) => s.toUpperCase()) });
+        cssScale(ctx, w, h);
+        const view = clean ? { ...st.view, calipers: false, grid: false } : st.view;
+        r.draw(ctx, m, f, a, tele, view, { hover: hoverRef.current, drag: dragRef.current?.id ?? null, dt, formants: formantsRef.current && !clean ? formants : [], slots: clean ? [] : slotsRef.current(m, a, f, formants, tele), info: clean ? [] : info.map((s) => s.toUpperCase()) });
         overlayRef.current?.(ctx, r, m, f, a, { w, h, dt });
         glow.apply(canvas, ctx, dpr);
       }
@@ -149,8 +154,13 @@ export function AnatomyView(props: { slots?: SlotsFn; info?: InfoFn; showFormant
     const rect = canvasRef.current!.getBoundingClientRect();
     const p = r.toBody(e.clientX - rect.left, e.clientY - rect.top);
     (e.target as Element).setPointerCapture(e.pointerId);
-    dragRef.current = { id, start: p, artic: { ...useStore.getState().artic } };
+    const st = useStore.getState();
+    dragRef.current = { id, start: p, artic: { ...st.artic } };
     e.preventDefault();
+    // A grab starts the audio, as the start overlay over the face did (until 704ed2c). The engine
+    // is what keeps the tongue out of the palate and makes the sound: without it a drag moved only
+    // the drawing, through the skull, in silence. In Play it breathes, as that overlay's button did.
+    if (!st.started) void (st.mode === "play" && !st.hold ? st.toggleBreath() : st.start());
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -162,7 +172,8 @@ export function AnatomyView(props: { slots?: SlotsFn; info?: InfoFn; showFormant
       if (id !== hover) setHover(id);
       return;
     }
-    if (!r || !m) return;
+    // until the audio runs nothing keeps the tongue in the mouth: the drag waits (or a failed start)
+    if (!r || !m || !useStore.getState().started) return;
     const rect = canvasRef.current!.getBoundingClientRect();
     const p = r.toBody(e.clientX - rect.left, e.clientY - rect.top);
     const t = m.tract;

@@ -17,6 +17,17 @@ export const V = {
 };
 /** the four control slots, in order */
 export const SLOTS = [V.green, V.red, V.pink, V.white] as const;
+/**
+ * Canvas text, kept separate from the vector line palette (mirrors --ink / --label / --label-quiet
+ * in styles.css). Line colours (blueDim, blueMid, frame) are never used for text: label() maps them
+ * to TEXT.label.
+ */
+export const TEXT = {
+  primary: "#effbff",
+  secondary: "#e2f5fc",
+  label: "#a9dcf8",
+  quiet: "#7cbfe6",
+} as const;
 
 /** mix two #rrggbb colours */
 export function mix(hex: string, to: string, u: number): string {

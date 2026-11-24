@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { engine } from "../../audio/AudioEngine.ts";
+import { inPlugin } from "../../audio/pluginBridge.ts";
 import { BEAT_SOUNDS, BEAT_PRESETS, formatBeat, parseBeat, type Airstream } from "../../wasm/engine.ts";
-import { Keys } from "./Keys.tsx";
+import { Keys, MidiButton } from "./Keys.tsx";
+import { ActionBar, PrimaryButton } from "./ActionBar.tsx";
+import { Menu } from "./Controls.tsx";
 import { Chip, Screen } from "./Screen.tsx";
 import { EncoderPages } from "./Encoder.tsx";
 import { Spectrogram } from "./Spectrogram.tsx";
 import type { InfoFn, SlotsFn } from "./AnatomyView.tsx";
 import { V } from "../colors.ts";
+import { MAX_BEAT_STEPS } from "../../wasm/wire.ts";
 
 const AIR: Record<Airstream, string> = {
   pulmonic: "Breath out",
@@ -62,6 +66,7 @@ function Pads() {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement;
+      if (t && t.tagName === "SELECT") return;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && (t as HTMLInputElement).type !== "range" && (t as HTMLInputElement).type !== "checkbox") return;
       const i = "1234567890".indexOf(e.key);
       if (i >= 0 && i < BEAT_SOUNDS.length) {
@@ -132,92 +137,111 @@ function Sequencer() {
   );
 }
 
-function Transport() {
-  const beat = useStore((s) => s.beat);
-  const setTempo = useStore((s) => s.setBeatTempo);
+/** Beatbox's main button: play or stop the beat; the pattern and the close-mic effect beside it. */
+function BeatActions() {
+  const playing = useStore((s) => s.beat.playing);
+  const preset = useStore((s) => s.beat.preset);
   const setPlaying = useStore((s) => s.setBeatPlaying);
-  const setSteps = useStore((s) => s.setBeatSteps);
+  const follow = useStore((s) => s.beat.follow);
+  const following = useStore((s) => s.beat.following);
+  const setFollow = useStore((s) => s.setBeatFollow);
   const loadPreset = useStore((s) => s.loadBeatPreset);
   const mic = useStore((s) => s.mic);
   const setMic = useStore((s) => s.setMic);
-  const [text, setText] = useState(() => formatBeat(beat.steps));
-  const editing = useRef(false);
-  useEffect(() => {
-    if (!editing.current) setText(formatBeat(beat.steps));
-  }, [beat.steps]);
+  const press = () => !following && setPlaying(!playing);
   return (
-    <div className="transport">
-      <div className="transport-top">
-        <button className={`primary play${beat.playing ? " on" : ""}`} onClick={() => setPlaying(!beat.playing)} aria-pressed={beat.playing}>
-          {beat.playing ? "Stop" : "Play beat"}
-        </button>
-        <Chip on={mic} onClick={() => setMic(!mic)}>
-          Close mic
+    <ActionBar label="Beat" onSpace={press}>
+      <PrimaryButton label="Play beat" playing={playing} busy={following ? "With host" : null} title={following ? "The host's transport is running the beat" : undefined} onClick={press} />
+      <Menu
+        label="Pattern"
+        value={preset ?? ""}
+        options={[...(preset ? [] : [{ value: "", label: "Your beat", disabled: true }]), ...BEAT_PRESETS.map((p) => ({ value: p.name, label: p.name }))]}
+        onChange={(name) => loadPreset(name)}
+      />
+      {/* an effect on the sound, not the microphone: "Close mic" read as "shut the mic" */}
+      <Chip on={mic} onClick={() => setMic(!mic)} title="Close-mic effect: the bass, presence and squash of a mic held to the lips">
+        Mic FX
+      </Chip>
+      {inPlugin && (
+        <Chip on={follow} onClick={() => setFollow(!follow)} title="Run the pattern with the host's transport, at its tempo">
+          Follow
         </Chip>
-      </div>
-      <div className="transport-encoders">
-        <EncoderPages
-          label="Transport"
-          columns={2}
-          pages={[
-            {
-              name: "Tempo",
-              encoders: [
-                { label: "Tempo", value: beat.bpm, min: 60, max: 180, onChange: (v) => setTempo({ bpm: Math.round(v) }), format: (v) => ({ value: String(Math.round(v)), unit: "bpm" }) },
-                { label: "Swing", value: beat.swing, min: 0, max: 0.6, onChange: (v) => setTempo({ swing: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
-              ],
-            },
-          ]}
-        />
-      </div>
-      <div className="examples presets" role="group" aria-label="Example beats">
-        {BEAT_PRESETS.map((p) => (
-          <Chip key={p.name} on={beat.preset === p.name} toggle={false} onClick={() => loadPreset(p.name)}>
-            {p.name}
-          </Chip>
-        ))}
-      </div>
-      <label className="sbn">
-        <span className="dim">Beat as text</span>
-        <input
-          value={text}
-          title="B kick, t hat, Pf snare, K rimshot, ^K inward, ! click, m hum (m:43 sets its note), . rest"
-          placeholder="B . t . | Pf . t ."
-          spellCheck={false}
-          onFocus={() => (editing.current = true)}
-          onBlur={() => {
-            editing.current = false;
-            setText(formatBeat(beat.steps));
-          }}
-          onChange={(e) => {
-            setText(e.target.value);
-            const steps = parseBeat(e.target.value);
-            if (steps.length) setSteps(steps);
-          }}
-        />
-      </label>
-    </div>
+      )}
+    </ActionBar>
   );
 }
 
-/** Beatbox mode's right column: the step sequencer, the waterfall, the pads, the transport, the keys (hum bass). */
-export function BeatboxRight() {
+function Transport() {
   const beat = useStore((s) => s.beat);
+  const setTempo = useStore((s) => s.setBeatTempo);
+  return (
+    <EncoderPages
+      label="Transport"
+      columns={2}
+      pages={[
+        {
+          name: "Tempo",
+          encoders: [
+            { label: "Tempo", value: beat.following ? beat.hostBpm : beat.bpm, min: 60, max: 240, step: 1, onChange: (v) => setTempo({ bpm: Math.round(v) }), format: (v) => ({ value: String(Math.round(v)), unit: "bpm" }) },
+            { label: "Swing", value: beat.swing, min: 0, max: 0.6, onChange: (v) => setTempo({ swing: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+          ],
+        },
+      ]}
+    />
+  );
+}
+
+/** The pattern typed out, in the sequencer's header: edit either one. */
+function BeatText() {
+  const steps = useStore((s) => s.beat.steps);
+  const setSteps = useStore((s) => s.setBeatSteps);
+  const [text, setText] = useState(() => formatBeat(steps));
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(formatBeat(steps));
+  }, [steps]);
+  return (
+    <label className="sbn">
+      <span className="dim">Beat as text</span>
+      <input
+        value={text}
+        title={`B kick, t hat, Pf snare, K rimshot, ^K inward, ! click, m hum (m:43 sets its note), . rest. Up to ${MAX_BEAT_STEPS} steps.`}
+        placeholder="B . t . | Pf . t ."
+        spellCheck={false}
+        onFocus={() => (editing.current = true)}
+        onBlur={() => {
+          editing.current = false;
+          setText(formatBeat(steps));
+        }}
+        onChange={(e) => {
+          setText(e.target.value);
+          const parsed = parseBeat(e.target.value);
+          if (parsed.length) setSteps(parsed);
+        }}
+      />
+    </label>
+  );
+}
+
+/** Beatbox mode's right column: the beat button, the step sequencer (and the beat as text), the waterfall, the pads, tempo, the keys (hum bass). */
+export function BeatboxRight() {
   return (
     <div className="right right-beatbox">
-      <Screen className="s-seq" title="Step sequencer" sub={`${beat.preset ?? "Your beat"} / ${beat.bpm} bpm`}>
+      <BeatActions />
+      <Screen className="s-seq" title="Step sequencer" tools={<BeatText />}>
         <Sequencer />
       </Screen>
-      <Screen className="s-wf" title="Spectrogram" sub="Last two seconds / newest in front">
+      <Screen watch className="s-wf" title="Spectrogram">
         <Spectrogram />
       </Screen>
-      <Screen className="s-pads" title="Pads" sub="Keys 1 to 0">
+      <Screen className="s-pads" title="Pads">
         <Pads />
       </Screen>
-      <Screen className="s-transport" title="Transport">
+      <Screen className="s-transport" title="Tempo">
         <Transport />
       </Screen>
-      <Screen className="s-keys s-keys-compact" title="Keys" sub="Hum a bass note">
+      {/* the keys hum a bass note under the beat */}
+      <Screen className="s-keys s-keys-compact" title="Bass" tools={<MidiButton />}>
         <Keys />
       </Screen>
     </div>

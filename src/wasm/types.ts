@@ -63,6 +63,10 @@ export interface HumanBody {
   tongueRadius: number;
   /** max lip width (cm, before scale) */
   lipWidth: number;
+  /** length of the membranous vocal fold, the part that vibrates (1 = adult male) */
+  foldLength: number;
+  /** how much more of the cycle the folds spend apart than an adult man's (0.13 = 13 points of open quotient) */
+  openPhase: number;
 }
 
 export interface ArticSpec {
@@ -155,6 +159,30 @@ export interface Segment {
   stress?: number;
   f0?: number;
   wordEnd?: boolean;
+  /** a voiceless stop or affricate's aspiration as its front end decides it (unset: English's rule) */
+  aspirated?: boolean;
+  /** how long an aspirated stop aspirates (s); unset: 50 ms */
+  vot?: number;
+  /** a vowel said with the velum lowered (IPA combining tilde) */
+  nasalized?: boolean;
+  /** a consonant with a secondary palatal gesture, the tongue body raised and fronted (IPA ʲ) */
+  palatalized?: boolean;
+  /** breathy voice: a voiced stop or affricate's release (IPA ʱ), or a vowel (combining diaeresis below) */
+  breathy?: boolean;
+  /** a vowel that is a glide off the vowel before it, reached over this long (s): one movement, not a second held vowel */
+  glide?: number;
+  /** a long sound: this many times the duration rules' length (Turkish's vowel before ğ) */
+  length?: number;
+}
+
+/** What the engine will not say as written in a piece of IPA text (see `skippedIpa`). */
+export interface SkippedIpa {
+  /** symbols it does not know (a tone letter, a click, a capital, a typo) */
+  unknown: string[];
+  /** symbols it knows but has no sound for (a vowel letter without a calibrated vowel) */
+  noSound: string[];
+  /** letters written with a mark it does not model or cannot apply there: the letter is said, the mark is not */
+  ignoredMarks: string[];
 }
 
 export interface PlannedSegment {
@@ -170,6 +198,10 @@ export interface Plan {
   segments: PlannedSegment[];
   end: number;
 }
+
+/** The language Latin-script words are read in: their script can't tell Turkish from English, so
+ *  the player chooses (Rust's `syllables::Lang`). Hangul and Cyrillic go to their own front ends. */
+export type Lang = "en" | "tr";
 
 export interface Phrase {
   segments: Segment[];
@@ -187,6 +219,24 @@ export interface Syllable {
   melisma?: boolean;
   wordEnd: boolean;
   phraseEnd: boolean;
+  /** pitch bends inside the sung note, written by the syllable's front end (a tone, an accent) */
+  pitch?: Bend[];
+  /** nasalise this fraction of the vowel before a closing rhyme's nasal coda (see `closing`; unset: none) */
+  nasalLead?: number;
+  /** the rhyme's ending (an off-glide, a nasal coda) is one closing movement at the note's end, this long at most (s); unset: a held part */
+  closing?: number;
+  /** how long after the onset's last consonant the voice starts (s); a song starts the vowel that long before its beat. Unset: the vowel's segment starts on the beat */
+  voiceLag?: number;
+  /** in a song the consonants before this syllable's vowel take at most this share of the time since the vowel before, shortening in proportion. Unset: they keep their lengths */
+  onsetShare?: number;
+}
+
+/** A bend of the pitch inside a sung note: `st` semitones, at its vowel's start or end, over `len` of the vowel (at most `max` s). */
+export interface Bend {
+  at: "start" | "middle" | "end";
+  len: number;
+  max: number;
+  st: number;
 }
 
 export interface SungNote {

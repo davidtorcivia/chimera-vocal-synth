@@ -11,6 +11,8 @@ export interface Melody {
   t0?: number;
   lyrics: string;
   notes: [number, number][];
+  /** sung syllables from a language front end: used instead of reading the lyrics as English */
+  syllables?: Syllable[];
 }
 
 export interface SungWords {

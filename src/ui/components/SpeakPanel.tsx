@@ -1,20 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { skippedLines } from "../skipped.ts";
 import { useStore } from "../store.ts";
-import { speakText, speakPie, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow } from "../speech.ts";
+import { useSing } from "../singing.ts";
+import { speakText, speakPie, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow, speakingNow, useSpeech } from "../speech.ts";
 import { mouthWords } from "../mouthWords.ts";
-import { tokenizeIpa } from "../../wasm/engine.ts";
-import { Slider, Toggle } from "./Controls.tsx";
+import { tokenizeIpa, type Lang } from "../../wasm/engine.ts";
+import { Menu, Slider } from "./Controls.tsx";
 import { Chip, Screen } from "./Screen.tsx";
+import { LangPick } from "./LangPick.tsx";
+import { ActionBar, PrimaryButton } from "./ActionBar.tsx";
 import { ScoreView, planNow } from "./ScoreView.tsx";
 import { TubeView } from "./TubeView.tsx";
 import { Stroboscope } from "./Stroboscope.tsx";
 import type { InfoFn, SlotsFn } from "./AnatomyView.tsx";
 import { V } from "../colors.ts";
 import { engine } from "../../audio/AudioEngine.ts";
+import { inPlugin } from "../../audio/pluginBridge.ts";
 
-const EXAMPLES = ["Hello. Can you hear me?", "She sells sea shells by the sea shore.", "Every sound here is air moving through a throat.", "The quick brown fox jumps over the lazy dog."];
-/** Proto-Indo-European examples (the "PIE" toggle): the opening of a dawn hymn, and a line of Schleicher's fable */
+/** Proto-Indo-European examples (the "PIE" chip): the opening of a dawn hymn, and a line of Schleicher's fable */
 const PIE_EXAMPLES = ["*h₂éwsōs léukā déiwī dʰugh₂tḗr", "*h₂ówis h₁ékʷōns spéket"];
+const EXAMPLES: Record<Lang, string[]> = {
+  en: ["Hello. Can you hear me?", "She sells sea shells by the sea shore.", "Every sound here is air moving through a throat.", "The quick brown fox jumps over the lazy dog."],
+  tr: ["Merhaba, nasılsın?", "Bugün hava çok güzel.", "Türkçe konuşabiliyor musun?", "Şu köşe yaz köşesi, şu köşe kış köşesi."],
+};
 
 // IPA pulmonic consonant chart (rows = manner, columns = place); empty cells are null
 const PLACES = ["Bilabial", "Labiodental", "Dental", "Alveolar", "Postalveolar", "Retroflex", "Palatal", "Velar", "Uvular", "Pharyngeal", "Glottal"];
@@ -114,52 +122,140 @@ function ConsonantChart(props: { onPad: (c: string) => void }) {
   );
 }
 
-/** Speak mode's right column: what to say, the gestural score, the consonant chart, the tube and folds. */
+/** Whether speech is sounding, polled each frame (re-renders only when it changes). */
+function useSpeaking(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      setOn(speakingNow());
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return on;
+}
+
+/** Speak mode's right column: the speak button, what to say, the gestural score, the consonant chart, the tube and folds. */
+/** In the plugin: the lines a note says, with the next one marked. */
+function Lines() {
+  const lines = useSpeech((s) => s.lines);
+  const cursor = useSpeech((s) => s.cursor);
+  const setCursor = useSpeech((s) => s.setCursor);
+  return (
+    <div className="syllables say-lines" role="group" aria-label="Lines. Each note says the marked one; choose another to start there.">
+      {lines.map((l, i) => (
+        <button key={i} className={`syl say-line${i === cursor ? " next" : ""}`} onClick={() => setCursor(i)} aria-current={i === cursor ? "step" : undefined} title={`Say from “${l}”`}>
+          {l}
+        </button>
+      ))}
+      {!lines.length && <span className="dim">No words: the notes say nothing.</span>}
+      <Chip toggle={false} className="from-start" onClick={() => setCursor(0)} disabled={cursor === 0}>
+        From the start
+      </Chip>
+    </div>
+  );
+}
+
 export function SpeakRight() {
   const body = useStore((s) => s.body);
   const f0 = useStore((s) => s.source.f0);
   const start = useStore((s) => s.start);
-  const [text, setText] = useState(EXAMPLES[0]);
-  const [ipa, setIpaRaw] = useState(false);
+  // one language for Speak and Sing, kept with Sing's words
+  const lang = useSing((s) => s.lang);
+  const setLang = useSing((s) => s.setLang);
+  // kept in a store, so the plugin saves them with the project and reads them on the audio thread
+  const { text, ipa, rate, edit } = useSpeech();
+  const setText = (v: string) => edit({ text: v });
+  // PIE is planned by the engine's PIE planner; it and IPA exclude each other (not kept in the plugin's store)
   const [pie, setPieRaw] = useState(false);
   const setIpa = (v: boolean) => {
-    setIpaRaw(v);
+    edit({ ipa: v });
     if (v) setPieRaw(false);
   };
   const setPie = (v: boolean) => {
     setPieRaw(v);
-    if (v) setIpaRaw(false);
+    if (v) edit({ ipa: false });
   };
-  const [rate, setRate] = useState(1);
+  const setRate = (v: number) => edit({ rate: v });
   const [busy, setBusy] = useState(false);
   const [trans, setTrans] = useState(currentPlan()?.transcription ?? "");
   const [vowel, setVowel] = useState("ɑ");
+  const speaking = useSpeaking();
   useEffect(() => onPlan((p) => setTrans(p?.transcription ?? "")), []);
+  // in the browser each visit starts afresh, on the first example of the words' language (the
+  // plugin's box is the project's, so it stays)
+  useEffect(() => {
+    if (!inPlugin) edit({ text: EXAMPLES[lang][0], ipa: false, rate: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // in IPA mode: the symbols in the box that the voice will not say, updated as the text changes
+  const skipped = useMemo(() => (ipa ? skippedLines(text) : []), [ipa, text]);
 
   const speak = async () => {
+    // the plugin says the next line, as a note would
+    if (inPlugin) return engine.pluginSpeak();
     setBusy(true);
     try {
       await start();
+      // the audio didn't start (the error shows on the bar): speaking would only light Stop
+      if (!useStore.getState().started) return;
       if (pie) speakPie(text, { body, rate, f0 });
-      else await speakText(text, { ipa, body, rate, f0 });
+      else await speakText(text, { ipa, lang, body, rate, f0 });
     } finally {
       setBusy(false);
     }
   };
   const pad = async (c: string) => {
+    if (inPlugin) return engine.pluginSayIpa(`ˈ${vowel}${c}${vowel}`);
     await start();
+    if (!useStore.getState().started) return;
     speakPhrases([{ segments: tokenizeIpa(`ˈ${vowel}${c}${vowel}`), intonation: "flat" }], { body, rate, f0 });
+  };
+
+  const press = () => (speaking ? stopSpeaking() : void speak());
+  // another language reads the words: an example of the old one gives way to the new one's first
+  const pickLang = (l: Lang) => {
+    if (l === lang && !ipa) return;
+    if (l !== lang && EXAMPLES[lang].includes(text)) setText(EXAMPLES[l][0]);
+    setLang(l);
+    setIpa(false);
+    setPie(false);
   };
 
   return (
     <div className="right right-speak">
-      <Screen className="s-say" title="Say" sub="Text to speech" tools={
-          <>
-            <Toggle label="Text is IPA" checked={ipa} onChange={setIpa} />
-            <Toggle label="PIE" checked={pie} onChange={setPie} />
-          </>
-        }>
-        <div className="say">
+      <ActionBar label="Speak" onSpace={press}>
+        <PrimaryButton label="Speak" playing={speaking} busy={busy ? "Preparing…" : null} onClick={press} />
+        {/* puts an example in the box: the menu always reads Examples, since the box shows the words */}
+        {!inPlugin && (
+        <Menu
+          label="Examples"
+          value=""
+          options={[{ value: "", label: "Examples", disabled: true }, ...EXAMPLES[lang].map((ex) => ({ value: ex, label: ex })), ...PIE_EXAMPLES.map((ex) => ({ value: ex, label: `PIE: ${ex}` }))]}
+          onChange={(ex) => {
+            edit({ text: ex, ipa: false });
+            setPieRaw(PIE_EXAMPLES.includes(ex));
+          }}
+        />
+        )}
+        <div className="act-slider">
+          <Slider label="Rate" value={rate} min={0.5} max={1.8} onChange={setRate} format={(v) => `${v.toFixed(2)}×`} />
+        </div>
+        {/* the plugin reads Latin script as English (other scripts by their own front ends) */}
+        {!inPlugin && <LangPick value={lang} onChange={pickLang} off={ipa || pie} />}
+        <Chip on={ipa} onClick={() => setIpa(!ipa)}>
+          Text is IPA
+        </Chip>
+        {!inPlugin && (
+          <Chip on={pie} onClick={() => setPie(!pie)}>
+            PIE
+          </Chip>
+        )}
+      </ActionBar>
+      <Screen className="s-say" label="What to say">
+        <div className={`say${inPlugin ? " say-lined" : ""}`}>
           <div className="say-row">
             <textarea
               value={text}
@@ -170,56 +266,29 @@ export function SpeakRight() {
               }}
               rows={2}
               spellCheck={!ipa && !pie}
+              lang={ipa || pie ? undefined : lang}
               aria-label={pie ? "Proto-Indo-European to speak" : ipa ? "IPA to speak" : "Text to speak"}
-              placeholder={pie ? "Type PIE, for example *h₂éwsōs or χáw.sos" : ipa ? "Type IPA, for example ˈhɛloʊ" : "Type something for the voice to say"}
+              placeholder={pie ? "Type PIE, for example *h₂éwsōs or χáw.sos" : ipa ? "Type IPA, for example ˈhɛloʊ" : inPlugin ? "One line per note" : "Type something for the voice to say"}
             />
-            <div className="say-actions">
-              <button className="primary" onClick={() => void speak()} disabled={busy}>
-                {busy ? "Preparing…" : "Speak"}
-              </button>
-              <button className="ghost" onClick={stopSpeaking}>
-                Stop
-              </button>
-            </div>
           </div>
           <div className="say-row">
-            <p className="transcription" aria-live="polite">
-              {trans ? `/${trans}/` : "The transcription appears here."}
-            </p>
-            <div className="say-rate">
-              <Slider label="Rate" value={rate} min={0.5} max={1.8} onChange={setRate} format={(v) => `${v.toFixed(2)}×`} />
+            <div className="say-read">
+              <p className="transcription" aria-live="polite">
+                {trans ? `/${trans}/` : ""}
+              </p>
+              <div className="say-skipped" aria-live="polite">
+                {skipped.map((l) => (
+                  <p key={l.what}>
+                    {l.what}: <span className="say-skipped-sym">{l.symbols.join(" ")}</span>
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="examples" role="group" aria-label="Examples">
-            {EXAMPLES.map((ex) => (
-              <Chip
-                key={ex}
-                toggle={false}
-                onClick={() => {
-                  setText(ex);
-                  setIpa(false);
-                  setPie(false);
-                }}
-              >
-                {ex}
-              </Chip>
-            ))}
-            {PIE_EXAMPLES.map((ex) => (
-              <Chip
-                key={ex}
-                toggle={false}
-                onClick={() => {
-                  setText(ex);
-                  setPie(true);
-                }}
-              >
-                {ex}
-              </Chip>
-            ))}
-          </div>
+          {inPlugin && <Lines />}
         </div>
       </Screen>
-      <Screen className="s-score" title="Gestural score">
+      <Screen watch className="s-score" title="Gestural score">
         <ScoreView />
       </Screen>
       <Screen
@@ -238,10 +307,10 @@ export function SpeakRight() {
       >
         <ConsonantChart onPad={(c) => void pad(c)} />
       </Screen>
-      <Screen className="s-tube" title="Tube" sub="Glottis to lips">
+      <Screen watch className="s-tube" title="Tube" sub="Glottis to lips">
         <TubeView />
       </Screen>
-      <Screen className="s-folds" title="Vocal folds" sub="Slowed 100×">
+      <Screen watch className="s-folds" title="Vocal folds" sub="Slowed 100×">
         <Stroboscope />
       </Screen>
     </div>

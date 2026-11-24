@@ -2,10 +2,11 @@
  * Real-time factor of the human voice in the wasm build (as the AudioWorklet runs it), on a
  * fixed utterance. Usage: bun tools/bench-wasm.ts (after `bun run wasm`).
  */
+import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { writeGestures } from "../src/wasm/wire.ts";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const scenario = JSON.parse(readFileSync(`${ROOT}crates/chimera/tests/golden/voice.json`, "utf8")).find((s: { name: string }) => s.name === "speech-male");
 const gestures = scenario.ops[0].gestures;
 const FS = 48000, SECS = 4, BLOCKS = (FS * SECS) / 128;

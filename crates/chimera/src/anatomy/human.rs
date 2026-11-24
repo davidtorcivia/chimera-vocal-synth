@@ -271,11 +271,20 @@ pub struct HumanBody {
     pub tongue_radius: f64,
     /// max lip width (cm, before scale)
     pub lip_width: f64,
+    /// length of the membranous vocal fold, the part that vibrates (1 = adult male). Two thirds of
+    /// his in a woman (1/1.6 in Titze 1989, 10 mm of 17 in Zhang 2021), which puts her peak flow at
+    /// 0.63 of his; 6 mm of 17 in a child of 8-10 (Zhang 2021, after Titze 1989).
+    pub fold_length: f64,
+    /// how much more of the cycle the folds spend apart than an adult man's (0.13 = 13 points of
+    /// open quotient): thinner folds meet for less of it. About 13 points in a woman's flow at normal
+    /// loudness (Holmberg et al. 1988, second-hand), about 12 from her 3.5 dB more H1*-H2* (Classen
+    /// et al. 1996, by Klatt & Klatt 1990, second-hand). A child's is taken to be a woman's, unsourced.
+    pub open_phase: f64,
 }
 
-pub const BODY_MALE: HumanBody = HumanBody { name: "Adult male", scale: 1.0, pharynx: 1.0, tongue_radius: 2.25, lip_width: 4.6 };
-pub const BODY_FEMALE: HumanBody = HumanBody { name: "Adult female", scale: 0.9, pharynx: 0.88, tongue_radius: 2.2, lip_width: 4.4 };
-pub const BODY_CHILD: HumanBody = HumanBody { name: "Child", scale: 0.74, pharynx: 0.8, tongue_radius: 2.15, lip_width: 4.0 };
+pub const BODY_MALE: HumanBody = HumanBody { name: "Adult male", scale: 1.0, pharynx: 1.0, tongue_radius: 2.25, lip_width: 4.6, fold_length: 1.0, open_phase: 0.0 };
+pub const BODY_FEMALE: HumanBody = HumanBody { name: "Adult female", scale: 0.9, pharynx: 0.88, tongue_radius: 2.2, lip_width: 4.4, fold_length: 0.67, open_phase: 0.13 };
+pub const BODY_CHILD: HumanBody = HumanBody { name: "Child", scale: 0.74, pharynx: 0.8, tongue_radius: 2.15, lip_width: 4.0, fold_length: 0.35, open_phase: 0.13 };
 
 /// The three human bodies by their short names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -377,6 +386,8 @@ impl BodyMix {
             pharynx: self.blend(|b| b.body().pharynx),
             tongue_radius: self.blend(|b| b.body().tongue_radius),
             lip_width: self.blend(|b| b.body().lip_width),
+            fold_length: self.blend(|b| b.body().fold_length),
+            open_phase: self.blend(|b| b.body().open_phase),
         }
     }
 }
@@ -1268,7 +1279,13 @@ impl HumanVocalTract {
         let vent = 0.95 * (1.0 - 0.75 * clamp(a.ventricular, 0.0, 1.0));
         let top = lerp(1.9, 0.35, clamp(a.epilarynx, 0.0, 1.0));
         // laryngeal ventricle, ventricular folds, then the tube to its top
-        let f = |x: f64| if x < 0.3 { 1.3 } else if x < 0.5 { vent } else { lerp(1.2, top, (x - 0.5) / 0.5) };
+        // Narrowing holds over the whole tube above the ventricular folds (none of it is wider than
+        // the outlet), as the aryepiglottic sphincter narrows the tube in singing: a narrow
+        // epilaryngeal tube over a wide ventricle and hypopharynx puts a resonance near 3 kHz, the
+        // singer's formant (Sundberg 1974; Titze & Story 1997). Narrowing only the outlet left F4 at
+        // 3.45-3.65 kHz; narrowing the ventricle too was worse. The folds themselves keep their own
+        // control (ventricular). Below epilarynx 0.45 nothing changes (the outlet is wider than 1.2).
+        let f = |x: f64| if x < 0.3 { 1.3 } else if x < 0.5 { vent } else { js_min(lerp(1.2, top, (x - 0.5) / 0.5), top) };
         // the steps between them are short ramps: a section boundary sliding across a step made
         // that section's area jump
         let r = 0.03;

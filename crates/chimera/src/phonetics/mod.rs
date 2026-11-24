@@ -1,6 +1,6 @@
 //! Phonetics: IPA, English G2P, syllables, durations, the gestural planner, singing, beatbox.
-//! These run off the audio thread (they allocate); their output is a [`Plan`] of gestures that a
-//! voice plays.
+//! Their output is a [`Plan`] of gestures that a voice plays. These run off the audio thread (they
+//! allocate), except the live note planners in [`sing`] (`*_into`).
 
 use crate::control::score::Gesture;
 use serde::{Deserialize, Serialize};
@@ -10,11 +10,15 @@ pub mod durations;
 pub mod english;
 pub mod inventory;
 pub mod ipa;
+pub mod korean;
+pub mod mandarin;
 pub mod pie;
 pub mod planner;
+pub mod russian;
 pub mod sing;
 pub mod songs;
 pub mod syllables;
+pub mod turkish;
 pub mod vowel_data;
 
 /// One phoneme in an utterance.
@@ -34,6 +38,35 @@ pub struct Segment {
     /// word boundary after this segment
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub word_end: Option<bool>,
+    /// a voiceless stop or affricate's aspiration, as its front end decides it (Mandarin and Korean
+    /// contrast it); None: the planner's default, English's rule (aspirated syllable-initially
+    /// before a vowel, not after /s/)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspirated: Option<bool>,
+    /// how long an aspirated stop or affricate aspirates (voice onset time, s), as its front end
+    /// decides it (Korean's lax stops aspirate briefly, its aspirated ones long); None: 50 ms
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vot: Option<f64>,
+    /// a vowel said with the velum lowered (IPA combining tilde); None or false: oral
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nasalized: Option<bool>,
+    /// a consonant made with a second, palatal gesture: the tongue body raised and fronted toward
+    /// the palate (IPA ʲ); None or false: plain
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palatalized: Option<bool>,
+    /// breathy voice: a voiced stop or affricate released with the folds apart (IPA ʱ), or a
+    /// vowel said with them part-open (IPA combining diaeresis below); None or false: modal
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breathy: Option<bool>,
+    /// a vowel that is a glide off the vowel before it: reached over this long (s) while that vowel
+    /// lets go over the glide's own length, so the two are one movement, not two held targets;
+    /// None: a vowel of its own
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glide: Option<f64>,
+    /// a long sound: it lasts this many times what the duration rules give it (Turkish's vowel
+    /// before ğ, "dağ" [daː]); None: as they give. An explicit `dur` wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<f64>,
 }
 
 impl Segment {
@@ -76,7 +109,7 @@ pub struct Plan {
 }
 
 /// A sung syllable.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Syllable {
     /// lyric text shown on the note
@@ -88,8 +121,60 @@ pub struct Syllable {
     /// continue the previous syllable's vowel at a new pitch
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub melisma: Option<bool>,
-    /// last syllable of a word (codas sound here; phrase breaks follow punctuation)
+    /// last syllable of a word (codas sound here; phrase breaks follow punctuation); may be left
+    /// out of hand-written JSON (false)
+    #[serde(default)]
     pub word_end: bool,
-    /// a breath follows (comma, full stop, line break)
+    /// a breath follows (comma, full stop, line break); may be left out (false)
+    #[serde(default)]
     pub phrase_end: bool,
+    /// pitch bends inside the sung note, as the syllable's front end writes them (a tone, a pitch
+    /// accent, a scoop); none: the note's pitch as written
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pitch: Vec<Bend>,
+    /// nasalise this fraction of the vowel before a closing rhyme's nasal coda (`closing`; at most
+    /// 0.25 s), as Mandarin does; None: the velum lowers only for the nasal itself
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nasal_lead: Option<f64>,
+    /// the rhyme's ending (a falling diphthong's off-glide, a nasal coda) is one closing movement at
+    /// the end of the note, this long at most (s), as Mandarin's 韵尾 is: the main vowel moves into
+    /// it and it is not held. None: the off-glide holds a share of the note and the coda is a
+    /// consonant of its own
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closing: Option<f64>,
+    /// how long after the onset's last consonant the voice starts (s): an aspiration, a burst, a
+    /// fricative's release. A song then starts the vowel that long before its beat, so the voice
+    /// is there on the beat (before a medial glide the glide takes it, at its own start). None:
+    /// the vowel's segment starts on the beat and the voice after it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_lag: Option<f64>,
+    /// in a song, the consonants before this syllable's vowel (its onset and medial glide, the
+    /// voice's lag, the coda before them) take at most this share of the time from the vowel
+    /// before to this one, and shorten in proportion when a fast note leaves them less: singers'
+    /// consonants shorten with the notes. None: they keep their lengths until the vowel before is
+    /// down to its floor
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onset_share: Option<f64>,
+}
+
+/// Which end of its sung vowel a pitch bend sits at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Edge {
+    Start,
+    /// centred on the vowel's middle (a dip or a peak inside the note: Mandarin's tone 3)
+    Middle,
+    End,
+}
+
+/// A bend of the pitch inside a sung note: `st` semitones from the note, at the vowel's start or
+/// end, over `len` of the vowel but at most `max` seconds. The melody stays as written; a bend only
+/// colours part of the note (a scoop, a pitch accent).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bend {
+    pub at: Edge,
+    pub len: f64,
+    pub max: f64,
+    pub st: f64,
 }

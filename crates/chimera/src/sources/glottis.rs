@@ -22,6 +22,8 @@ pub struct GlottisParams {
     pub chink: f64,
     /// open quotient 0..1
     pub open_quotient: f64,
+    /// how much of the cycle folds held apart lose of their closed phase, per cm² of abduction
+    pub open_with_abduction: f64,
     /// fraction of the open phase spent opening (0.5 symmetric, larger = faster closing)
     pub skew: f64,
     /// 0 = smooth (raised-cosine) closure, 1 = abrupt slope at closure
@@ -54,6 +56,7 @@ pub const DEFAULT_GLOTTIS: GlottisParams = GlottisParams {
     abduction: 0.0,
     chink: 0.006,
     open_quotient: 0.62,
+    open_with_abduction: 0.0,
     skew: 0.62,
     closure_sharpness: 0.6,
     effort: 0.7,
@@ -224,6 +227,8 @@ impl ParametricGlottis {
 
         // pulse shape within the cycle
         let mut oq = clamp(self.cyc_oq - 0.18 * (p.effort - 0.5), 0.25, 0.98);
+        // the chink is left out: it's a gap behind folds that still meet
+        oq = js_min(0.98, oq + p.open_with_abduction * js_max(0.0, self.static_sm - p.chink));
         if p.fry > 0.0 {
             oq = oq * (1.0 - p.fry) + 0.28 * p.fry;
         }
@@ -249,6 +254,23 @@ impl ParametricGlottis {
 
     pub fn cycle_phase(&self) -> f64 {
         self.phase
+    }
+
+    /// How many of the smoothed values are denormal (for tests: none should be).
+    pub fn denormal_states(&self) -> usize {
+        [self.dp_sm, self.voicing_sm, self.amp_sm, self.closure_sm, self.static_sm].iter().filter(|x| crate::airway::network::is_denormal(**x)).count()
+    }
+
+    /// Zero the smoothed values that have decayed to nothing (see `AirwayNetwork::flush_tiny`):
+    /// with the breath off or the folds apart each of them heads for zero and would otherwise
+    /// stall among the denormals. Called at control rate.
+    pub fn flush_tiny(&mut self) {
+        use crate::airway::network::tiny;
+        tiny(&mut self.dp_sm);
+        tiny(&mut self.voicing_sm);
+        tiny(&mut self.amp_sm);
+        tiny(&mut self.closure_sm);
+        tiny(&mut self.static_sm);
     }
 }
 
